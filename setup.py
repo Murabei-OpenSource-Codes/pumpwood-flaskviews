@@ -23,14 +23,14 @@ except Exception:
 os.chdir(os.path.normpath(os.path.join(os.path.abspath(__file__), os.pardir)))
 
 setuptools.setup(
-    name='pumpwood-miscellaneous',
+    name='pumpwood-flaskviews',
     version='0.0.0',
     include_package_data=True,
     license='BSD-3-Clause License',
-    description='Miscellaneous class and funcitions used in Pumpwood.',
+    description='Assist creation of flask views in Pumpwood format..',
     long_description=README,
     long_description_content_type="text/markdown",
-    url='https://github.com/Murabei-OpenSource-Codes/pumpwood-miscellaneous',
+    url='https://github.com/Murabei-OpenSource-Codes/pumpwood-flaskviews',
     author='Murabei Data Science',
     author_email='a.baceti@murabei.com',
     classifiers=[
