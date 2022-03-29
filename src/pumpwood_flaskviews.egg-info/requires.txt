@@ -1,4 +1,4 @@
-djangorestframework
-python-slugify
-pumpwood-communication
-pandas
+djangorestframework==3.13.1
+python-slugify==6.1.1
+pumpwood-communication>=0.71
+pandas>=1.0
