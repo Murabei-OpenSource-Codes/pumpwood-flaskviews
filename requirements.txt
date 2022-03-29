@@ -1,0 +1,5 @@
+Django
+djangorestframework
+python-slugify
+pumpwood-communication
+pandas
