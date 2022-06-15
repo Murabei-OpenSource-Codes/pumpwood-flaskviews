@@ -4,6 +4,7 @@ import io
 import pandas as pd
 import textwrap
 import inspect
+import datetime
 from flask.views import View
 from flask import request, json, Response
 from flask import jsonify, send_file
@@ -290,7 +291,8 @@ class PumpWoodFlaskView(View):
 
     def list(self, filter_dict: dict = {}, exclude_dict: dict = {},
              order_by: list = [], fields: list = None,
-             limit: int = None, **kwargs) -> list:
+             limit: int = None, default_fields: bool = False,
+             **kwargs) -> list:
         """
         Return query result pagination.
 
@@ -305,6 +307,8 @@ class PumpWoodFlaskView(View):
                 See pumpwood_flaskmisc.SqlalchemyQueryMisc documentation.
             fields [list]: Fields to be returned.
             limit [int]: Number of objects to be returned.
+            default_fields [bool]: Return the fields specified at
+                self.list_fields.
         Return [list]:
             Return a list of serialized objects using self.serializer and
             filtered by args.
@@ -329,13 +333,22 @@ class PumpWoodFlaskView(View):
         query_result = SqlalchemyQueryMisc.sqlalchemy_kward_query(
             **to_function_dict).limit(list_paginate_limit).all()
 
-        temp_fields = fields or self.list_fields
+        # If field is set always return the requested fields.
+        if fields is not None:
+            temp_fields = fields
+        # default_fields is True, return the ones specified by self.list_fields
+        elif default_fields:
+            temp_fields = self.list_fields
+        # If default_fields not set return all object fields.
+        else:
+            temp_fields = None
+
         temp_serializer = self.serializer(many=True, only=temp_fields)
         return temp_serializer.dump(query_result, many=True).data
 
     def list_without_pag(self, filter_dict: dict = {}, exclude_dict: dict = {},
                          order_by: list = [], fields: list = None,
-                         **kwargs) -> list:
+                         default_fields: bool = False, **kwargs) -> list:
         """
         Return query without pagination.
 
@@ -349,6 +362,8 @@ class PumpWoodFlaskView(View):
             order_by [list]: Dictionary to be used in filter operations.
                 See pumpwood_flaskmisc.SqlalchemyQueryMisc documentation.
             fields [list]: Fields to be returned.
+            default_fields [bool]: Return the fields specified at
+                self.list_fields.
         Return [list]:
             Return a list of serialized objects using self.serializer and
             filtered by args without pagination all values.
@@ -371,7 +386,16 @@ class PumpWoodFlaskView(View):
         query_result = SqlalchemyQueryMisc.sqlalchemy_kward_query(
             **to_function_dict).all()
 
-        temp_fields = fields or self.list_fields
+        # If field is set always return the requested fields.
+        if fields is not None:
+            temp_fields = fields
+        # default_fields is True, return the ones specified by self.list_fields
+        elif default_fields:
+            temp_fields = self.list_fields
+        # If default_fields not set return all object fields.
+        else:
+            temp_fields = None
+
         temp_serializer = self.serializer(many=True, only=temp_fields)
         return temp_serializer.dump(query_result, many=True).data
 
@@ -679,7 +703,27 @@ class PumpWoodFlaskView(View):
         else:
             to_save_obj = retrieve_serializer.load(data, session=session)
 
-        if to_save_obj.errors == {}:
+        # True if errors were found at the validation of the fields
+        with_save_error = to_save_obj.errors != {}
+
+        # Set file names with file_paths dict which is not exposed to API
+        # this is only used by save_file_streaming to set file name
+        for key, path in file_paths.items():
+            setattr(to_save_obj.data, key, path)
+
+        if not with_save_error:
+            try:
+                session.add(to_save_obj.data)
+                session.commit()
+            except IntegrityError as e:
+                session.rollback()
+                raise exceptions.PumpWoodIntegrityError(message=str(e))
+
+        # True if files were added to the object
+        with_files = False
+        file_save_time = datetime.datetime.utcnow().strftime(
+            "%Y-%m-%dT%Hh%Mm%Ss")
+        if not with_save_error:
             for field in self.file_fields.keys():
                 field_errors = []
                 if field in request.files:
@@ -692,28 +736,30 @@ class PumpWoodFlaskView(View):
                         field_errors.extend(self._allowed_extension(
                             filename=filename,
                             allowed_extensions=self.file_fields[field]))
-                        filename = "{}___{}".format(
-                            to_save_obj.data.id, filename)
+                        filename = "{}___{}___{}".format(
+                            to_save_obj.data.id, file_save_time,
+                            filename)
+                        print("filename:", filename)
 
                         if len(field_errors) != 0:
                             to_save_obj.errors[field] = field_errors
+                            with_save_error = True
                         else:
-                            model_class = self.model_class.__name__.lower()
-                            file_path = '{model_class}__{field}/'.format(
-                                model_class=model_class, field=field)
-                            storage_filepath = self.storage_object.write_file(
-                                file_path=file_path, file_name=filename,
-                                data=file.read(),
-                                content_type=file.content_type,
-                                if_exists='overide')
-                            setattr(to_save_obj.data, field, storage_filepath)
-
-        #################################################################
-        # Set file names with file_paths dict which is not exposed to API
-        # this is only used by save_file_streaming to set file name
-        for key, path in file_paths.items():
-            setattr(to_save_obj.data, key, path)
-        #################################################################
+                            if not with_save_error:
+                                model_class = self.model_class.__name__.lower()
+                                file_path = '{model_class}__{field}/'.format(
+                                    model_class=model_class, field=field)
+                                storage_filepath = \
+                                    self.storage_object.write_file(
+                                        file_path=file_path,
+                                        file_name=filename,
+                                        data=file.read(),
+                                        content_type=file.content_type,
+                                        if_exists='overide')
+                                setattr(
+                                    to_save_obj.data, field,
+                                    storage_filepath)
+                                with_files = True
 
         if to_save_obj.errors != {}:
             message = "error when saving object: " \
@@ -725,13 +771,15 @@ class PumpWoodFlaskView(View):
             message = message + "; ".join(message_to_append)
             raise exceptions.PumpWoodObjectSavingException(
                 message=message, payload=payload)
-        try:
-            session.add(to_save_obj.data)
-            session.commit()
 
-        except IntegrityError as e:
-            session.rollback()
-            raise exceptions.PumpWoodIntegrityError(message=str(e))
+        # If files were added then save objects again
+        if with_files:
+            try:
+                session.add(to_save_obj.data)
+                session.commit()
+            except IntegrityError as e:
+                session.rollback()
+                raise exceptions.PumpWoodIntegrityError(message=str(e))
 
         result = retrieve_serializer.dump(to_save_obj.data).data
         if self.microservice is not None and self.trigger:
