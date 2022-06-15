@@ -739,7 +739,6 @@ class PumpWoodFlaskView(View):
                         filename = "{}___{}___{}".format(
                             to_save_obj.data.id, file_save_time,
                             filename)
-                        print("filename:", filename)
 
                         if len(field_errors) != 0:
                             to_save_obj.errors[field] = field_errors
