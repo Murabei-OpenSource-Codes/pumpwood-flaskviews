@@ -5,6 +5,7 @@ import pandas as pd
 import textwrap
 import inspect
 import datetime
+import psycopg2
 from flask.views import View
 from flask import request, json, Response
 from flask import jsonify, send_file
@@ -1336,6 +1337,56 @@ def register_pumpwood_view(app, view, service_object: dict):
     @app.errorhandler(ProgrammingError)
     def handle_sqlalchemy_programmingerror_errors(error):
         pump_exc = exceptions.PumpWoodException(message=str(error))
+        response = jsonify(pump_exc.to_dict())
+        response.status_code = pump_exc.status_code
+        return response
+
+    # psycopg2 error handlers
+    @app.errorhandler(psycopg2.errors.DatabaseError)
+    def handle_psycopg2_DatabaseError(error):
+        pump_exc = exceptions.PumpWoodDatabaseError(message=str(error))
+        response = jsonify(pump_exc.to_dict())
+        response.status_code = pump_exc.status_code
+        return response
+
+    @app.errorhandler(psycopg2.errors.OperationalError)
+    def handle_psycopg2_OperationalError(error):
+        pump_exc = exceptions.PumpWoodDatabaseError(message=str(error))
+        response = jsonify(pump_exc.to_dict())
+        response.status_code = pump_exc.status_code
+        return response
+
+    @app.errorhandler(psycopg2.errors.NotSupportedError)
+    def handle_psycopg2_NotSupportedError(error):
+        pump_exc = exceptions.PumpWoodDatabaseError(message=str(error))
+        response = jsonify(pump_exc.to_dict())
+        response.status_code = pump_exc.status_code
+        return response
+
+    @app.errorhandler(psycopg2.errors.ProgrammingError)
+    def handle_psycopg2_ProgrammingError(error):
+        pump_exc = exceptions.PumpWoodDatabaseError(message=str(error))
+        response = jsonify(pump_exc.to_dict())
+        response.status_code = pump_exc.status_code
+        return response
+
+    @app.errorhandler(psycopg2.errors.DataError)
+    def handle_psycopg2_DataError(error):
+        pump_exc = exceptions.PumpWoodDatabaseError(message=str(error))
+        response = jsonify(pump_exc.to_dict())
+        response.status_code = pump_exc.status_code
+        return response
+
+    @app.errorhandler(psycopg2.errors.IntegrityError)
+    def handle_psycopg2_IntegrityError(error):
+        pump_exc = exceptions.PumpWoodDatabaseError(message=str(error))
+        response = jsonify(pump_exc.to_dict())
+        response.status_code = pump_exc.status_code
+        return response
+
+    @app.errorhandler(psycopg2.errors.InternalError)
+    def handle_psycopg2_InternalError(error):
+        pump_exc = exceptions.PumpWoodDatabaseError(message=str(error))
         response = jsonify(pump_exc.to_dict())
         response.status_code = pump_exc.status_code
         return response
