@@ -1200,14 +1200,14 @@ class PumpWoodDimentionsFlaskView(PumpWoodFlaskView):
             endpoint_dict = data or {}
             return jsonify(self.list_dimensions(**endpoint_dict))
 
-        if (end_point == 'list-dimention-values' and
+        if (end_point == 'list-dimensions-values' and
                 request.method.lower() == 'post'):
             endpoint_dict = data or {}
             if "key" not in endpoint_dict.keys():
                 raise exceptions.PumpWoodException(
                     "Dimention key must be passed as post payload "
                     "{key: [value]}")
-            return jsonify(self.list_dimention_values(**endpoint_dict))
+            return jsonify(self.list_dimension_values(**endpoint_dict))
 
         return super(PumpWoodDimentionsFlaskView, self).dispatch_request(
             end_point, first_arg, second_arg)
@@ -1245,7 +1245,7 @@ class PumpWoodDimentionsFlaskView(PumpWoodFlaskView):
         """.format(query_string=query_string), con=self.db.engine)["keys"]
         return distinct_keys
 
-    def list_dimention_values(self, key: str, filter_dict: dict = {},
+    def list_dimension_values(self, key: str, filter_dict: dict = {},
                               exclude_dict: dict = {}) -> list:
         """List dimensions avaiable using query.
 
