@@ -1063,7 +1063,9 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
 
     def pivot(self, filter_dict: dict = {}, exclude_dict: dict = {},
               order_by: list = [], columns: list = [], format: str = 'list',
-              variables=None, show_deleted=False):
+              variables: list = None, show_deleted: bool = False,
+              add_pk_column: bool = False, limit: int = None,
+              **kwargs):
         """
         Pivot end-point.
 
@@ -1078,6 +1080,12 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
             columns (list): Columns to be used in pivoting
             format (str): Format to be used in pivot, same argument used in
                           pandas to_dict.
+            variables (list) = []: List of the columns to be returned.
+            show_deleted (bool) = False: If column deleted is avaiable
+                show deleted rows. By default those columns are removed.
+            add_pk_column (bool): Add pk column to the results facilitating
+                the pagination of long dataframes.
+            limit (int) = None: Limit results to limit n rows.
         """
         model_variables = variables or self.model_variables
         if type(columns) != list:
@@ -1094,9 +1102,18 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
                 "Format must be in ['dict','list','series','split'," +
                 "'records','index']")
 
+        # Remove deleted entries from results
         if hasattr(self.model_class, 'deleted'):
             if not show_deleted:
                 filter_dict["deleted"] = False
+
+        # Add pk/id columns to results
+        if add_pk_column:
+            if len(columns) != 0:
+                raise exceptions.PumpWoodException(
+                    "Can not add pk column and pivot information")
+            if ("id" not in model_variables):
+                model_variables = ["id"] + model_variables
 
         to_function_dict = {}
         to_function_dict['object_model'] = self.model_class
@@ -1105,6 +1122,12 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
         to_function_dict['order_by'] = order_by
         query = SqlalchemyQueryMisc.sqlalchemy_kward_query(
             **to_function_dict)
+
+        # Limit results to help on pagination
+        if limit is not None:
+            query = query.limit(limit)
+
+        # Set columns to be returned at query
         variables_to_return = [
             col for col in list(alchemy_inspect(self.model_class).c)
             if col.key in model_variables]
@@ -1193,6 +1216,7 @@ class PumpWoodDimentionsFlaskView(PumpWoodFlaskView):
                 data = request.form.to_dict()
                 for k in data.keys():
                     data[k] = json.loads(data[k])
+
         ########################
         #
         if (end_point == 'list-dimensions' and
@@ -1200,7 +1224,7 @@ class PumpWoodDimentionsFlaskView(PumpWoodFlaskView):
             endpoint_dict = data or {}
             return jsonify(self.list_dimensions(**endpoint_dict))
 
-        if (end_point == 'list-dimensions-values' and
+        if (end_point == 'list-dimension-values' and
                 request.method.lower() == 'post'):
             endpoint_dict = data or {}
             if "key" not in endpoint_dict.keys():
