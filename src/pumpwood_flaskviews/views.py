@@ -1199,10 +1199,10 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
                 data_cols=pd_data_cols,))
 
 
-class PumpWoodDimentionsFlaskView(PumpWoodFlaskView):
+class PumpWoodDimensionsFlaskView(PumpWoodFlaskView):
     """Class view for models that hold data."""
 
-    _view_type = "dimention"
+    _view_type = "dimension"
 
     def dispatch_request(self, end_point, first_arg=None, second_arg=None):
         """dispatch_request for view, add pivot end point."""
@@ -1233,7 +1233,7 @@ class PumpWoodDimentionsFlaskView(PumpWoodFlaskView):
                     "{key: [value]}")
             return jsonify(self.list_dimension_values(**endpoint_dict))
 
-        return super(PumpWoodDimentionsFlaskView, self).dispatch_request(
+        return super(PumpWoodDimensionsFlaskView, self).dispatch_request(
             end_point, first_arg, second_arg)
 
     def list_dimensions(self, filter_dict: dict = {},
