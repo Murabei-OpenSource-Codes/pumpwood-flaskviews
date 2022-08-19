@@ -6,6 +6,7 @@ import textwrap
 import inspect
 import datetime
 import psycopg2
+from sqlalchemy import inspect as sqlalchemy_inspect
 from flask.views import View
 from flask import request, json, Response
 from flask import jsonify, send_file
@@ -677,20 +678,33 @@ class PumpWoodFlaskView(View):
         except Exception:
             self.db.engine.dispose()
             session.rollback()
-        ###############################################
 
         ################################################################
         # Remove all fields that are files so it can be only loaded when
         # a file is passed
         for field in self.file_fields.keys():
             data.pop(field, None)
-        ################################################################
 
         pk = data.pop('pk', None)
         to_save_obj = None
         if pk is not None:
-            model_object = self.model_class.query.get(pk)
-            if pk is not None and model_object is None:
+            #######################################################
+            # Use all primary keys to query the object if present #
+            mapper = sqlalchemy_inspect(self.model_class)
+            primary_keys = [
+                col.name for col in list(mapper.c) if col.primary_key]
+
+            # Pk key will always be considered the first primary key of the
+            # model.
+            get_dict = {primary_keys[0]: pk}
+            for pk_col in primary_keys[1:]:
+                pk_value = data.get(pk_col, None)
+                if pk_value is not None:
+                    get_dict[pk_col] = pk_value
+
+            # Query object to update
+            model_object = self.model_class.query.get(get_dict)
+            if model_object is None:
                 message = (
                     "Requested object {model_class}[{pk}] not found.").format(
                     model_class=self.model_class.__mapper__.class_.__name__,
