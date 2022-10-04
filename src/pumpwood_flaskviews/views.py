@@ -6,6 +6,7 @@ import textwrap
 import inspect
 import datetime
 import psycopg2
+from sqlalchemy import inspect as sqlalchemy_inspect
 from flask.views import View
 from flask import request, json, Response
 from flask import jsonify, send_file
@@ -677,20 +678,33 @@ class PumpWoodFlaskView(View):
         except Exception:
             self.db.engine.dispose()
             session.rollback()
-        ###############################################
 
         ################################################################
         # Remove all fields that are files so it can be only loaded when
         # a file is passed
         for field in self.file_fields.keys():
             data.pop(field, None)
-        ################################################################
 
         pk = data.pop('pk', None)
         to_save_obj = None
         if pk is not None:
-            model_object = self.model_class.query.get(pk)
-            if pk is not None and model_object is None:
+            #######################################################
+            # Use all primary keys to query the object if present #
+            mapper = sqlalchemy_inspect(self.model_class)
+            primary_keys = [
+                col.name for col in list(mapper.c) if col.primary_key]
+
+            # Pk key will always be considered the first primary key of the
+            # model.
+            get_dict = {primary_keys[0]: pk}
+            for pk_col in primary_keys[1:]:
+                pk_value = data.get(pk_col, None)
+                if pk_value is not None:
+                    get_dict[pk_col] = pk_value
+
+            # Query object to update
+            model_object = self.model_class.query.get(get_dict)
+            if model_object is None:
                 message = (
                     "Requested object {model_class}[{pk}] not found.").format(
                     model_class=self.model_class.__mapper__.class_.__name__,
@@ -1063,7 +1077,9 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
 
     def pivot(self, filter_dict: dict = {}, exclude_dict: dict = {},
               order_by: list = [], columns: list = [], format: str = 'list',
-              variables=None, show_deleted=False):
+              variables: list = None, show_deleted: bool = False,
+              add_pk_column: bool = False, limit: int = None,
+              **kwargs):
         """
         Pivot end-point.
 
@@ -1078,6 +1094,12 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
             columns (list): Columns to be used in pivoting
             format (str): Format to be used in pivot, same argument used in
                           pandas to_dict.
+            variables (list) = []: List of the columns to be returned.
+            show_deleted (bool) = False: If column deleted is avaiable
+                show deleted rows. By default those columns are removed.
+            add_pk_column (bool): Add pk column to the results facilitating
+                the pagination of long dataframes.
+            limit (int) = None: Limit results to limit n rows.
         """
         model_variables = variables or self.model_variables
         if type(columns) != list:
@@ -1094,9 +1116,18 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
                 "Format must be in ['dict','list','series','split'," +
                 "'records','index']")
 
+        # Remove deleted entries from results
         if hasattr(self.model_class, 'deleted'):
             if not show_deleted:
                 filter_dict["deleted"] = False
+
+        # Add pk/id columns to results
+        if add_pk_column:
+            if len(columns) != 0:
+                raise exceptions.PumpWoodException(
+                    "Can not add pk column and pivot information")
+            if ("id" not in model_variables):
+                model_variables = ["id"] + model_variables
 
         to_function_dict = {}
         to_function_dict['object_model'] = self.model_class
@@ -1105,6 +1136,12 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
         to_function_dict['order_by'] = order_by
         query = SqlalchemyQueryMisc.sqlalchemy_kward_query(
             **to_function_dict)
+
+        # Limit results to help on pagination
+        if limit is not None:
+            query = query.limit(limit)
+
+        # Set columns to be returned at query
         variables_to_return = [
             col for col in list(alchemy_inspect(self.model_class).c)
             if col.key in model_variables]
@@ -1176,10 +1213,10 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
                 data_cols=pd_data_cols,))
 
 
-class PumpWoodDimentionsFlaskView(PumpWoodFlaskView):
+class PumpWoodDimensionsFlaskView(PumpWoodFlaskView):
     """Class view for models that hold data."""
 
-    _view_type = "dimention"
+    _view_type = "dimension"
 
     def dispatch_request(self, end_point, first_arg=None, second_arg=None):
         """dispatch_request for view, add pivot end point."""
@@ -1193,6 +1230,7 @@ class PumpWoodDimentionsFlaskView(PumpWoodFlaskView):
                 data = request.form.to_dict()
                 for k in data.keys():
                     data[k] = json.loads(data[k])
+
         ########################
         #
         if (end_point == 'list-dimensions' and
@@ -1200,7 +1238,7 @@ class PumpWoodDimentionsFlaskView(PumpWoodFlaskView):
             endpoint_dict = data or {}
             return jsonify(self.list_dimensions(**endpoint_dict))
 
-        if (end_point == 'list-dimensions-values' and
+        if (end_point == 'list-dimension-values' and
                 request.method.lower() == 'post'):
             endpoint_dict = data or {}
             if "key" not in endpoint_dict.keys():
@@ -1209,7 +1247,7 @@ class PumpWoodDimentionsFlaskView(PumpWoodFlaskView):
                     "{key: [value]}")
             return jsonify(self.list_dimension_values(**endpoint_dict))
 
-        return super(PumpWoodDimentionsFlaskView, self).dispatch_request(
+        return super(PumpWoodDimensionsFlaskView, self).dispatch_request(
             end_point, first_arg, second_arg)
 
     def list_dimensions(self, filter_dict: dict = {},
