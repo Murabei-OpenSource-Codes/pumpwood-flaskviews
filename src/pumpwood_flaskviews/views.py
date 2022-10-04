@@ -630,6 +630,8 @@ class PumpWoodFlaskView(View):
         except IntegrityError as e:
             session.rollback()
             raise exceptions.PumpWoodIntegrityError(message=str(e))
+        except Exception as e:
+            raise exceptions.PumpWoodObjectDeleteException(message=str(e))
 
         if self.microservice is not None and self.trigger:
             # Process ETLTrigger for the model class
@@ -654,14 +656,17 @@ class PumpWoodFlaskView(View):
             session.rollback()
         ###############################################
 
-        to_function_dict = {}
-        to_function_dict['object_model'] = self.model_class
-        to_function_dict['filter_dict'] = filter_dict
-        to_function_dict['exclude_dict'] = exclude_dict
-        query_result = SqlalchemyQueryMisc.sqlalchemy_kward_query(
-            **to_function_dict)
-        query_result.delete(synchronize_session='fetch')
-        session.commit()
+        try:
+            to_function_dict = {}
+            to_function_dict['object_model'] = self.model_class
+            to_function_dict['filter_dict'] = filter_dict
+            to_function_dict['exclude_dict'] = exclude_dict
+            query_result = SqlalchemyQueryMisc.sqlalchemy_kward_query(
+                **to_function_dict)
+            query_result.delete(synchronize_session='fetch')
+            session.commit()
+        except Exception as e:
+            raise exceptions.PumpWoodObjectDeleteException(message=str(e))
         return True
 
     def save(self, data, file_paths: dict = {}):
