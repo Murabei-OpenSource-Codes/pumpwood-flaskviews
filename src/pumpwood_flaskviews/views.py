@@ -947,6 +947,8 @@ class PumpWoodFlaskView(View):
     @classmethod
     def cls_search_options(cls):
         mapper = alchemy_inspect(cls.model_class)
+        dump_only_fields = getattr(cls.serializer.Meta, "dump_only", [])
+
         dict_columns = {}
         for x in mapper.columns:
             type = None
@@ -955,12 +957,17 @@ class PumpWoodFlaskView(View):
             else:
                 type = x.type.python_type.__name__
 
+            read_only = False
+            if x.name in dump_only_fields:
+                read_only = True
+
             column_info = {
                 "primary_key": x.primary_key,
                 "column": x.name,
                 "doc_string": x.doc,
                 "type": type,
                 "nullable": x.nullable,
+                "read_only": read_only,
                 "default": None}
 
             unique = x.unique
