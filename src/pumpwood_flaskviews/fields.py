@@ -34,4 +34,4 @@ class ChoiceField(fields.Field):
         return None
 
     def _deserialize(self, value, attr, data):
-        return value
+        return value.code
