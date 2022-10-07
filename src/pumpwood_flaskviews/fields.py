@@ -30,8 +30,8 @@ class ChoiceField(fields.Field):
 
     def _serialize(self, value, attr, obj):
         if value is not None:
-            return value
+            return value.code
         return None
 
     def _deserialize(self, value, attr, data):
-        return value
+        return value.code
