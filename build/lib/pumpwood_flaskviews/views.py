@@ -302,11 +302,11 @@ class PumpWoodFlaskView(View):
             No args.
         Kargs:
             filter_dict [dict]: Dictionary to be used in filter operations.
-                See pumpwood_flaskmisc.SqlalchemyQueryMisc documentation.
+                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
             exclude_dict [dict]: Dictionary to be used in filter operations.
-                See pumpwood_flaskmisc.SqlalchemyQueryMisc documentation.
+                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
             order_by [list]: Dictionary to be used in filter operations.
-                See pumpwood_flaskmisc.SqlalchemyQueryMisc documentation.
+                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
             fields [list]: Fields to be returned.
             limit [int]: Number of objects to be returned.
             default_fields [bool]: Return the fields specified at
@@ -358,11 +358,11 @@ class PumpWoodFlaskView(View):
             No args.
         Kargs:
             filter_dict [dict]: Dictionary to be used in filter operations.
-                See pumpwood_flaskmisc.SqlalchemyQueryMisc documentation.
+                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
             exclude_dict [dict]: Dictionary to be used in filter operations.
-                See pumpwood_flaskmisc.SqlalchemyQueryMisc documentation.
+                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
             order_by [list]: Dictionary to be used in filter operations.
-                See pumpwood_flaskmisc.SqlalchemyQueryMisc documentation.
+                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
             fields [list]: Fields to be returned.
             default_fields [bool]: Return the fields specified at
                 self.list_fields.
