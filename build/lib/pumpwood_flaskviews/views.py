@@ -50,6 +50,7 @@ class PumpWoodFlaskView(View):
     list_fields = None
     foreign_keys = {}
     file_fields = {}
+    file_folder = None
 
     storage_object = None
     microservice = None
@@ -684,11 +685,15 @@ class PumpWoodFlaskView(View):
             self.db.engine.dispose()
             session.rollback()
 
-        ################################################################
-        # Remove all fields that are files so it can be only loaded when
-        # a file is passed
-        for field in self.file_fields.keys():
-            data.pop(field, None)
+        ##################################################################
+        # Remove all fields that are files so it can be only loaded when #
+        # a file is passed, ["!path!"] indicates that path is passed, but
+        # it can be treated as file for downloading and interface
+        file_fields_not_path = {}
+        for key, item in self.file_fields.items():
+            if item != ["!path!"]:
+                data.pop(key, None)
+                file_fields_not_path[key] = item
 
         pk = data.pop('pk', None)
         to_save_obj = None
@@ -744,7 +749,7 @@ class PumpWoodFlaskView(View):
         file_save_time = datetime.datetime.utcnow().strftime(
             "%Y-%m-%dT%Hh%Mm%Ss")
         if not with_save_error:
-            for field in self.file_fields.keys():
+            for field in file_fields_not_path.keys():
                 field_errors = []
                 if field in request.files:
                     files_list = request.files.getlist(field)
@@ -765,9 +770,16 @@ class PumpWoodFlaskView(View):
                             with_save_error = True
                         else:
                             if not with_save_error:
+                                # Set file folder path not using model_class
+                                # if self.file_folder is set, usefull if file
+                                # is passed to other class using path.
                                 model_class = self.model_class.__name__.lower()
+                                if self.file_folder is not None:
+                                    model_class = self.file_folder
                                 file_path = '{model_class}__{field}/'.format(
                                     model_class=model_class, field=field)
+
+                                # Save file on storage
                                 storage_filepath = \
                                     self.storage_object.write_file(
                                         file_path=file_path,
@@ -778,6 +790,18 @@ class PumpWoodFlaskView(View):
                                 setattr(
                                     to_save_obj.data, field,
                                     storage_filepath)
+
+                                # Get hash if there is a {field}_hash on
+                                # object attributes
+                                field_hash = "{}_hash".format(field)
+                                if hasattr(to_save_obj.data, field_hash):
+                                    file_hash = \
+                                        self.storage_object.get_file_hash(
+                                            file_path=storage_filepath)
+                                    setattr(
+                                        to_save_obj.data, field_hash,
+                                        file_hash)
+
                                 with_files = True
 
         if to_save_obj.errors != {}:
