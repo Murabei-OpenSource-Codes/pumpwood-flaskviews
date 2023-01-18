@@ -1042,9 +1042,9 @@ class PumpWoodFlaskView(View):
                 elif arg == dict:
                     column_info["default"] = {}
                 elif inspect.isfunction(arg):
-                    column_info["default"] = "$|auto|$" + arg.__name__ + "()"
+                    column_info["default"] = arg.__name__ + "()"
                 elif isinstance(x.default, Sequence):
-                    column_info["default"] = "$|auto|$" + "#autoincrement#"
+                    column_info["default"] = "#autoincrement#"
                 elif isinstance(arg, sql_false):
                     column_info["default"] = False
                 elif isinstance(arg, sql_true):
@@ -1059,9 +1059,9 @@ class PumpWoodFlaskView(View):
                 elif arg == dict:
                     column_info["default"] = {}
                 elif inspect.isfunction(arg):
-                    column_info["default"] = "$|auto|$" + arg.__name__ + "()"
+                    column_info["default"] = arg.__name__ + "()"
                 elif isinstance(x.server_default, Sequence):
-                    column_info["default"] = "$|auto|$" + "#autoincrement#"
+                    column_info["default"] = "#autoincrement#"
                 elif isinstance(arg, sql_false):
                     column_info["default"] = False
                 elif isinstance(arg, sql_true):
