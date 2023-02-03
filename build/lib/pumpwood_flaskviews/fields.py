@@ -34,4 +34,8 @@ class ChoiceField(fields.Field):
         return None
 
     def _deserialize(self, value, attr, data):
-        return value
+        # Not checking if value is a string breaks saving the object.
+        if type(value) == str:
+            return value
+        else:
+            return value.code

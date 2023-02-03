@@ -50,6 +50,7 @@ class PumpWoodFlaskView(View):
     list_fields = None
     foreign_keys = {}
     file_fields = {}
+    file_folder = None
 
     storage_object = None
     microservice = None
@@ -302,11 +303,11 @@ class PumpWoodFlaskView(View):
             No args.
         Kargs:
             filter_dict [dict]: Dictionary to be used in filter operations.
-                See pumpwood_flaskmisc.SqlalchemyQueryMisc documentation.
+                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
             exclude_dict [dict]: Dictionary to be used in filter operations.
-                See pumpwood_flaskmisc.SqlalchemyQueryMisc documentation.
+                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
             order_by [list]: Dictionary to be used in filter operations.
-                See pumpwood_flaskmisc.SqlalchemyQueryMisc documentation.
+                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
             fields [list]: Fields to be returned.
             limit [int]: Number of objects to be returned.
             default_fields [bool]: Return the fields specified at
@@ -358,11 +359,11 @@ class PumpWoodFlaskView(View):
             No args.
         Kargs:
             filter_dict [dict]: Dictionary to be used in filter operations.
-                See pumpwood_flaskmisc.SqlalchemyQueryMisc documentation.
+                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
             exclude_dict [dict]: Dictionary to be used in filter operations.
-                See pumpwood_flaskmisc.SqlalchemyQueryMisc documentation.
+                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
             order_by [list]: Dictionary to be used in filter operations.
-                See pumpwood_flaskmisc.SqlalchemyQueryMisc documentation.
+                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
             fields [list]: Fields to be returned.
             default_fields [bool]: Return the fields specified at
                 self.list_fields.
@@ -630,6 +631,8 @@ class PumpWoodFlaskView(View):
         except IntegrityError as e:
             session.rollback()
             raise exceptions.PumpWoodIntegrityError(message=str(e))
+        except Exception as e:
+            raise exceptions.PumpWoodObjectDeleteException(message=str(e))
 
         if self.microservice is not None and self.trigger:
             # Process ETLTrigger for the model class
@@ -654,14 +657,17 @@ class PumpWoodFlaskView(View):
             session.rollback()
         ###############################################
 
-        to_function_dict = {}
-        to_function_dict['object_model'] = self.model_class
-        to_function_dict['filter_dict'] = filter_dict
-        to_function_dict['exclude_dict'] = exclude_dict
-        query_result = SqlalchemyQueryMisc.sqlalchemy_kward_query(
-            **to_function_dict)
-        query_result.delete(synchronize_session='fetch')
-        session.commit()
+        try:
+            to_function_dict = {}
+            to_function_dict['object_model'] = self.model_class
+            to_function_dict['filter_dict'] = filter_dict
+            to_function_dict['exclude_dict'] = exclude_dict
+            query_result = SqlalchemyQueryMisc.sqlalchemy_kward_query(
+                **to_function_dict)
+            query_result.delete(synchronize_session='fetch')
+            session.commit()
+        except Exception as e:
+            raise exceptions.PumpWoodObjectDeleteException(message=str(e))
         return True
 
     def save(self, data, file_paths: dict = {}):
@@ -679,11 +685,15 @@ class PumpWoodFlaskView(View):
             self.db.engine.dispose()
             session.rollback()
 
-        ################################################################
-        # Remove all fields that are files so it can be only loaded when
-        # a file is passed
-        for field in self.file_fields.keys():
-            data.pop(field, None)
+        ##################################################################
+        # Remove all fields that are files so it can be only loaded when #
+        # a file is passed, ["!path!"] indicates that path is passed, but
+        # it can be treated as file for downloading and interface
+        file_fields_not_path = {}
+        for key, item in self.file_fields.items():
+            if item != ["!path!"]:
+                data.pop(key, None)
+                file_fields_not_path[key] = item
 
         pk = data.pop('pk', None)
         to_save_obj = None
@@ -739,7 +749,7 @@ class PumpWoodFlaskView(View):
         file_save_time = datetime.datetime.utcnow().strftime(
             "%Y-%m-%dT%Hh%Mm%Ss")
         if not with_save_error:
-            for field in self.file_fields.keys():
+            for field in file_fields_not_path.keys():
                 field_errors = []
                 if field in request.files:
                     files_list = request.files.getlist(field)
@@ -760,9 +770,16 @@ class PumpWoodFlaskView(View):
                             with_save_error = True
                         else:
                             if not with_save_error:
+                                # Set file folder path not using model_class
+                                # if self.file_folder is set, usefull if file
+                                # is passed to other class using path.
                                 model_class = self.model_class.__name__.lower()
+                                if self.file_folder is not None:
+                                    model_class = self.file_folder
                                 file_path = '{model_class}__{field}/'.format(
                                     model_class=model_class, field=field)
+
+                                # Save file on storage
                                 storage_filepath = \
                                     self.storage_object.write_file(
                                         file_path=file_path,
@@ -773,6 +790,18 @@ class PumpWoodFlaskView(View):
                                 setattr(
                                     to_save_obj.data, field,
                                     storage_filepath)
+
+                                # Get hash if there is a {field}_hash on
+                                # object attributes
+                                field_hash = "{}_hash".format(field)
+                                if hasattr(to_save_obj.data, field_hash):
+                                    file_hash = \
+                                        self.storage_object.get_file_hash(
+                                            file_path=storage_filepath)
+                                    setattr(
+                                        to_save_obj.data, field_hash,
+                                        file_hash)
+
                                 with_files = True
 
         if to_save_obj.errors != {}:
@@ -942,6 +971,8 @@ class PumpWoodFlaskView(View):
     @classmethod
     def cls_search_options(cls):
         mapper = alchemy_inspect(cls.model_class)
+        dump_only_fields = getattr(cls.serializer.Meta, "dump_only", [])
+
         dict_columns = {}
         for x in mapper.columns:
             type = None
@@ -950,12 +981,17 @@ class PumpWoodFlaskView(View):
             else:
                 type = x.type.python_type.__name__
 
+            read_only = False
+            if x.name in dump_only_fields:
+                read_only = True
+
             column_info = {
                 "primary_key": x.primary_key,
                 "column": x.name,
                 "doc_string": x.doc,
                 "type": type,
                 "nullable": x.nullable,
+                "read_only": read_only,
                 "default": None}
 
             unique = x.unique
