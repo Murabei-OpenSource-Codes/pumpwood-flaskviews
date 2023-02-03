@@ -443,12 +443,16 @@ class PumpWoodFlaskView(View):
         temp_serializer = self.serializer(many=False, only=temp_fields)
         return temp_serializer.dump(model_object).data
 
-    def retrieve(self, pk: int) -> dict:
+    def retrieve(self, pk: int, composite_pk: dict={}) -> dict:
         """
         Retrieve object with pk.
 
         Args:
             pk [int]: Primary key of the object to be returned.
+        Kwargs:
+            composite_pk [dict]: Add extra data to combine with
+                main primary, this is necessary mainly on variable
+                tables that are indexed using many keys.
         Return [dict]:
             A dictonary with the serialized values of the object.
         """
@@ -462,7 +466,12 @@ class PumpWoodFlaskView(View):
             session.rollback()
         ###############################################
 
-        model_object = self.model_class.query.get(pk)
+        model_object = None
+        if composite_pk is None:
+            model_object = self.model_class.query.get(pk)
+        else:
+            self.model_class
+        
         retrieve_serializer = self.serializer(many=False)
 
         if pk is not None and model_object is None:
@@ -992,15 +1001,8 @@ class PumpWoodFlaskView(View):
                 "type": type,
                 "nullable": x.nullable,
                 "read_only": read_only,
-                "default": None}
-
-            unique = x.unique
-            if unique is None:
-                if x.primary_key:
-                    unique = True
-                elif unique is None:
-                    unique = False
-            column_info["unique"] = unique
+                "default": None,
+                "unique": x.unique}
 
             if isinstance(x.type, ChoiceType):
                 column_info["type"] = "options"
@@ -1008,10 +1010,10 @@ class PumpWoodFlaskView(View):
                     {"value": choice[0], "description": choice[1]}
                     for choice in x.type.choices]
 
-            if x.primary_key or column_info["column"] == "id":
+            if column_info["column"] == "id":
                 column_info["column"] = "pk"
                 column_info["default"] = "#autoincrement#"
-                column_info["doc_string"] = "object primary key"
+                column_info["doc_string"] = "autoincrement id"
 
             micro_fk = cls.foreign_keys.get(x.name)
             if micro_fk is not None:
