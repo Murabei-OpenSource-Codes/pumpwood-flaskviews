@@ -443,7 +443,7 @@ class PumpWoodFlaskView(View):
         temp_serializer = self.serializer(many=False, only=temp_fields)
         return temp_serializer.dump(model_object).data
 
-    def retrieve(self, pk: int, composite_pk: dict={}) -> dict:
+    def retrieve(self, pk: int) -> dict:
         """
         Retrieve object with pk.
 
@@ -466,14 +466,8 @@ class PumpWoodFlaskView(View):
             session.rollback()
         ###############################################
 
-        model_object = None
-        if composite_pk is None:
-            model_object = self.model_class.query.get(pk)
-        else:
-            self.model_class
-        
+        model_object = self.model_class.query.get(pk)
         retrieve_serializer = self.serializer(many=False)
-
         if pk is not None and model_object is None:
             message = "Requested object {model_class}[{pk}] not found.".format(
                 model_class=self.model_class.__mapper__.class_.__name__, pk=pk)
