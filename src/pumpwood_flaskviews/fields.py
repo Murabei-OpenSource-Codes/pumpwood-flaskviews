@@ -1,6 +1,11 @@
+import base64
+import simplejson as json
 from geoalchemy2.shape import from_shape, to_shape
 from shapely import geometry
 from marshmallow import fields
+from sqlalchemy import inspect as sqlalchemy_inspect
+from pumpwood_communication import exceptions
+from pumpwood_communication.serializers import CompositePkBase64Converter
 
 
 # Robado de @om-henners om-henners/serializer_utils.py
@@ -39,3 +44,21 @@ class ChoiceField(fields.Field):
             return value
         else:
             return value.code
+
+
+# Primary Key Field
+class PrimaryKeyField(fields.Function):
+    """Create a marshmallow field to serialize ChoiceFields."""
+    _primary_keys = None
+
+    def _serialize(self, value, attr, obj, **kwargs):
+        if self._primary_keys is None:
+            mapper = sqlalchemy_inspect(obj.__table__)
+            self._primary_keys = [
+                col.name for col in list(mapper.c) if col.primary_key]
+
+        return CompositePkBase64Converter.dump(
+            obj=obj, primary_keys=self._primary_keys)
+
+    def _deserialize(self, value, attr, data, **kwargs):
+        return CompositePkBase64Converter.load(value=value)

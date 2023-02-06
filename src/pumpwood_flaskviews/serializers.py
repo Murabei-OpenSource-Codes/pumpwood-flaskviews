@@ -1,8 +1,8 @@
 """Set base serializers for PumpWood systems."""
 import os
-from marshmallow import (
-    validates, fields, ValidationError)
+from marshmallow import validates, fields, ValidationError
 from marshmallow_sqlalchemy import ModelSchema
+from pumpwood_flaskviews.fields import PrimaryKeyField
 
 
 def get_model_class(obj):
@@ -14,8 +14,8 @@ def get_model_class(obj):
 
 class PumpWoodSerializer(ModelSchema):
     """Default PumpWood Serializer."""
-
-    pk = fields.Integer(required=False, attribute="id", allow_none=True)
+    pk = PrimaryKeyField(allow_none = True, required = False, dump_only=True)
+    # pk = fields.Integer(required=False, attribute="id", allow_none=True)
     model_class = fields.Function(get_model_class, dump_only=True)
 
     @validates('model_class')

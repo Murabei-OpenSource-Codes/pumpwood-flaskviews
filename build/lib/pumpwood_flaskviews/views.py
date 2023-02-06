@@ -1,11 +1,15 @@
 """Functions and classes to help build PumpWood End-Points."""
 import os
 import io
+import copy
 import pandas as pd
 import textwrap
 import inspect
 import datetime
 import psycopg2
+import sqlalchemy
+import simplejson as json
+from typing import Any
 from sqlalchemy import inspect as sqlalchemy_inspect
 from flask.views import View
 from flask import request, json, Response
@@ -17,7 +21,6 @@ from sqlalchemy.sql.functions import GenericFunction
 from sqlalchemy.sql.schema import Sequence, UniqueConstraint
 from sqlalchemy.sql.expression import False_ as sql_false
 from sqlalchemy.sql.expression import True_ as sql_true
-from sqlalchemy.exc import IntegrityError, ProgrammingError
 from geoalchemy2.types import Geometry
 from pumpwood_communication import exceptions
 from pumpwood_miscellaneous.query import SqlalchemyQueryMisc
@@ -34,6 +37,7 @@ class PumpWoodFlaskView(View):
     """
 
     _view_type = "simple"
+    _primary_keys = None
 
     #####################
     # Route information #
@@ -44,17 +48,48 @@ class PumpWoodFlaskView(View):
 
     CHUNK_SIZE = 4096
 
+    # Database connection
     db = None
+    
+    # SQLAlchemy model
     model_class = None
+    
+    # Marshmellow serializer
     serializer = None
+    
+    # List of the fields that will be returned by default on list requests
     list_fields = None
+    
+    # Dict with the foreign key to other models, it does not ensure consistency
+    # it will be avaiable on routes model and at fill_options for
+    # documentation
     foreign_keys = {}
+    
+    # Set file fields that are on model, it is a dictionary with key as the
+    # column name and values as lists of the extensions that will be permitted
+    # on field, '*' will allow any type of file
     file_fields = {}
+
+    # File path on storage will be '{model_class}__{field}/', setting this
+    # attribute will change de behavior to '{file_folder}__{field}/'
     file_folder = None
 
+    # PumpwoodStorage object
     storage_object = None
+
+    # PumpwoodMicroservice object
     microservice = None
+
+    # Set if save, delete, action end-point must trigger ETL Trigger on
+    # request finish.
     trigger = True
+
+    # Some large table are partitioned using one or more columns. Fetching
+    # without setting this columns on filters may lead to reduced performance,
+    # or even query hanging without finishing. If this variable is set it will
+    # not allow flat_list_by_chunks queries on PumpwoodCommunication without
+    # setting at least the first partition as equal or in filter.
+    table_partition = []
 
     # Front-end uses 50 as limit to check if all data have been fetched,
     # if change this parameter, be sure to update front-end list component.
@@ -166,18 +201,15 @@ class PumpWoodFlaskView(View):
         if end_point == 'list-one' and request.method.lower() == 'get':
             if first_arg is None:
                 raise exceptions.ObjectDoesNotExist('url pk is None')
-
-            int_pk = int(first_arg)
-            return jsonify(self.list_one(pk=int_pk))
+            return jsonify(self.list_one(pk=first_arg))
 
         # Retrive end-points
         if end_point == 'retrieve':
             if first_arg is None:
                 return jsonify(self.object_template())
 
-            int_pk = int(first_arg)
             if request.method.lower() == 'get':
-                return jsonify(self.retrieve(pk=int_pk))
+                return jsonify(self.retrieve(pk=first_arg))
 
         if end_point == 'retrieve-file':
             if request.method.lower() == 'get':
@@ -239,13 +271,12 @@ class PumpWoodFlaskView(View):
 
         if end_point == "remove-file-field" and \
                 request.method.lower() in ('delete'):
-            int_pk = int(first_arg)
             file_field = request.args.get('file_field')
             if file_field is None:
                 raise exceptions.PumpWoodForbidden(
                     "file_field not set as url parameter")
-            return jsonify(
-                self.remove_file_field(pk=int_pk, file_field=file_field))
+            return jsonify(self.remove_file_field(
+                pk=first_arg, file_field=file_field))
 
         # Delete end-point
         if end_point == 'delete':
@@ -253,8 +284,7 @@ class PumpWoodFlaskView(View):
                 if first_arg is None:
                     raise exceptions.PumpWoodException(
                         "Delete endpoint with delete method must have a pk")
-                int_pk = int(first_arg)
-                return jsonify(self.delete(pk=int_pk))
+                return jsonify(self.delete(pk=first_arg))
 
             if request.method.lower() == 'post':
                 endpoint_dict = data or {}
@@ -301,7 +331,8 @@ class PumpWoodFlaskView(View):
 
         Args:
             No args.
-        Kargs:
+
+        Kwargs:
             filter_dict [dict]: Dictionary to be used in filter operations.
                 See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
             exclude_dict [dict]: Dictionary to be used in filter operations.
@@ -427,7 +458,8 @@ class PumpWoodFlaskView(View):
             session.rollback()
         ###############################################
 
-        model_object = self.model_class.query.get(pk)
+        converted_pk = CompositePkBase64Converter.load(pk)
+        model_object = self.model_class.query.get(converted_pk)
         if pk is not None and model_object is None:
             message = "Requested object {model_class}[{pk}] not found.".format(
                 model_class=self.model_class.__mapper__.class_.__name__, pk=pk)
@@ -443,7 +475,7 @@ class PumpWoodFlaskView(View):
         temp_serializer = self.serializer(many=False, only=temp_fields)
         return temp_serializer.dump(model_object).data
 
-    def retrieve(self, pk: int) -> dict:
+    def retrieve(self, pk: Any) -> dict:
         """
         Retrieve object with pk.
 
@@ -454,7 +486,7 @@ class PumpWoodFlaskView(View):
                 main primary, this is necessary mainly on variable
                 tables that are indexed using many keys.
         Return [dict]:
-            A dictonary with the serialized values of the object.
+            A dictionary with the serialized values of the object.
         """
         ###############################################
         # Check if database connection of session is Ok
@@ -466,7 +498,8 @@ class PumpWoodFlaskView(View):
             session.rollback()
         ###############################################
 
-        model_object = self.model_class.query.get(pk)
+        converted_pk = CompositePkBase64Converter.load(pk)
+        model_object = self.model_class.query.get(converted_pk)
         retrieve_serializer = self.serializer(many=False)
         if pk is not None and model_object is None:
             message = "Requested object {model_class}[{pk}] not found.".format(
@@ -581,7 +614,8 @@ class PumpWoodFlaskView(View):
             session.rollback()
         ###############################################
 
-        obj = self.model_class.query.get(pk)
+        converted_pk = CompositePkBase64Converter.load(pk)
+        obj = self.model_class.query.get(converted_pk)
         file_path = file_path = getattr(obj, file_field)
         if file_path is None:
             raise exceptions.PumpWoodObjectDoesNotExist(
@@ -616,7 +650,9 @@ class PumpWoodFlaskView(View):
             session.rollback()
         ###############################################
 
-        model_object = self.model_class.query.get(pk)
+        converted_pk = CompositePkBase64Converter.load(pk)
+        print("self.model_class.query.get")
+        model_object = self.model_class.query.get(converted_pk)
         if pk is not None and model_object is None:
             message = "Requested object {model_class}[{pk}] not found.".format(
                 model_class=self.model_class.__mapper__.class_.__name__, pk=pk)
@@ -625,18 +661,22 @@ class PumpWoodFlaskView(View):
                     "model_class": self.model_class.__mapper__.class_.__name__,
                     "pk": pk})
 
-        temp_serializer = self.serializer(many=False, only=self.list_fields)
+        temp_serializer = self.serializer(many=False)
+        print("temp_serializer.dump")
         object_dump = temp_serializer.dump(model_object, many=False).data
-
+        print("try")
         try:
             session.delete(model_object)
             session.commit()
+            print("session.delete")
         except IntegrityError as e:
             session.rollback()
             raise exceptions.PumpWoodIntegrityError(message=str(e))
         except Exception as e:
+            print("Exception")
             raise exceptions.PumpWoodObjectDeleteException(message=str(e))
 
+        print("self.microservice is not None and self.trigger")
         if self.microservice is not None and self.trigger:
             # Process ETLTrigger for the model class
             self.microservice.login()
@@ -701,22 +741,13 @@ class PumpWoodFlaskView(View):
         pk = data.pop('pk', None)
         to_save_obj = None
         if pk is not None:
-            #######################################################
-            # Use all primary keys to query the object if present #
-            mapper = sqlalchemy_inspect(self.model_class)
-            primary_keys = [
-                col.name for col in list(mapper.c) if col.primary_key]
-
-            # Pk key will always be considered the first primary key of the
-            # model.
-            get_dict = {primary_keys[0]: pk}
-            for pk_col in primary_keys[1:]:
-                pk_value = data.get(pk_col, None)
-                if pk_value is not None:
-                    get_dict[pk_col] = pk_value
+            mapper = sqlalchemy_inspect(obj.__table__)
+            self._primary_keys = [
+            col.name for col in list(mapper.c) if col.primary_key]
 
             # Query object to update
-            model_object = self.model_class.query.get(get_dict)
+            converted_pk = CompositePkBase64Converter.load(pk)
+            model_object = self.model_class.query.get(converted_pk)
             if model_object is None:
                 message = (
                     "Requested object {model_class}[{pk}] not found.").format(
@@ -941,7 +972,8 @@ class PumpWoodFlaskView(View):
                 raise exceptions.PumpWoodActionArgsException(
                     "Function is static and pk is not Null")
 
-            model_object = self.model_class.query.get(pk)
+            converted_pk = CompositePkBase64Converter.load(pk)
+            model_object = self.model_class.query.get(converted_pk)
             if model_object is None:
                 message_template = "Requested object {model_class}[{pk}] " + \
                     "not found."
@@ -1005,7 +1037,6 @@ class PumpWoodFlaskView(View):
                     for choice in x.type.choices]
 
             if column_info["column"] == "id":
-                column_info["column"] = "pk"
                 column_info["default"] = "#autoincrement#"
                 column_info["doc_string"] = "autoincrement id"
 
@@ -1066,6 +1097,35 @@ class PumpWoodFlaskView(View):
                     column_info["default"] = arg
 
             dict_columns[column_info["column"]] = column_info
+        
+        ############################################################
+        # Stores primary keys as attribute to help other functions #
+        if cls._primary_keys is None:
+            cls._primary_keys = [
+                key for key, item in dict_columns.items()
+                if item["primary_key"]]
+
+        if len(cls._primary_keys) == 1:
+            dict_columns["pk"] = {
+                "primary_key": True,
+                "column": "id",
+                "doc_string": "table primary key",
+                "type": "#autoincrement#",
+                "nullable": False,
+                "read_only": True,
+                "default": "#autoincrement#",
+                "unique": True}
+        else:
+            dict_columns["pk"] = {
+                "primary_key": True,
+                "column": cls._primary_keys,
+                "doc_string": "base64 encoded json dictionary",
+                "type": "str",
+                "nullable": False,
+                "read_only": True,
+                "default": None,
+                "unique": True,
+                "partition": cls.table_partition}
         return dict_columns
 
     def search_options(self):
@@ -1127,7 +1187,7 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
             format (str): Format to be used in pivot, same argument used in
                           pandas to_dict.
             variables (list) = []: List of the columns to be returned.
-            show_deleted (bool) = False: If column deleted is avaiable
+            show_deleted (bool) = False: If column deleted is available
                 show deleted rows. By default those columns are removed.
             add_pk_column (bool): Add pk column to the results facilitating
                 the pagination of long dataframes.
@@ -1158,8 +1218,9 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
             if len(columns) != 0:
                 raise exceptions.PumpWoodException(
                     "Can not add pk column and pivot information")
-            if ("id" not in model_variables):
-                model_variables = ["id"] + model_variables
+            for pk_col in self._primary_keys:
+                if (pk_col not in model_variables):
+                    model_variables = [pk_col] + model_variables
 
         to_function_dict = {}
         to_function_dict['object_model'] = self.model_class
@@ -1397,6 +1458,7 @@ def register_pumpwood_view(app, view, service_object: dict):
         response.status_code = error.status_code
         return response
 
+    # Python errors
     @app.errorhandler(TypeError)
     def handle_type_errors(error):
         pump_exc = exceptions.PumpWoodException(message=str(error))
@@ -1404,9 +1466,24 @@ def register_pumpwood_view(app, view, service_object: dict):
         response.status_code = pump_exc.status_code
         return response
 
-    @app.errorhandler(ProgrammingError)
+    # SQLAlchemy errors
+    @app.errorhandler(sqlalchemy.exc.ProgrammingError)
     def handle_sqlalchemy_programmingerror_errors(error):
         pump_exc = exceptions.PumpWoodException(message=str(error))
+        response = jsonify(pump_exc.to_dict())
+        response.status_code = pump_exc.status_code
+        return response
+
+    @app.errorhandler(sqlalchemy.exc.IntegrityError)
+    def handle_sqlalchemy_invalidrequest_error(error):
+        pump_exc = exceptions.PumpWoodDatabaseError(message=str(error))
+        response = jsonify(pump_exc.to_dict())
+        response.status_code = pump_exc.status_code
+        return response
+
+    @app.errorhandler(sqlalchemy.exc.InvalidRequestError)
+    def handle_sqlalchemy_invalidrequest_error(error):
+        pump_exc = exceptions.PumpWoodQueryException(message=str(error))
         response = jsonify(pump_exc.to_dict())
         response.status_code = pump_exc.status_code
         return response
@@ -1449,13 +1526,6 @@ def register_pumpwood_view(app, view, service_object: dict):
 
     @app.errorhandler(psycopg2.errors.IntegrityError)
     def handle_psycopg2_IntegrityError(error):
-        pump_exc = exceptions.PumpWoodDatabaseError(message=str(error))
-        response = jsonify(pump_exc.to_dict())
-        response.status_code = pump_exc.status_code
-        return response
-
-    @app.errorhandler(psycopg2.errors.InternalError)
-    def handle_psycopg2_InternalError(error):
         pump_exc = exceptions.PumpWoodDatabaseError(message=str(error))
         response = jsonify(pump_exc.to_dict())
         response.status_code = pump_exc.status_code
