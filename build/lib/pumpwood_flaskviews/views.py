@@ -23,6 +23,7 @@ from sqlalchemy.sql.expression import False_ as sql_false
 from sqlalchemy.sql.expression import True_ as sql_true
 from geoalchemy2.types import Geometry
 from pumpwood_communication import exceptions
+from pumpwood_communication.serializers import CompositePkBase64Converter
 from pumpwood_miscellaneous.query import SqlalchemyQueryMisc
 from .auth import AuthFactory
 from .action import load_action_parameters
