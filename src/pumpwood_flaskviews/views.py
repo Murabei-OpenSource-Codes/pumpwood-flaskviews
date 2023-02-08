@@ -670,11 +670,15 @@ class PumpWoodFlaskView(View):
             session.delete(model_object)
             session.commit()
             print("session.delete")
-        except IntegrityError as e:
+        except sqlalchemy.exc.IntegrityError as e:
+            session.rollback()
+            raise exceptions.PumpWoodIntegrityError(message=str(e))
+        except psycopg2.errors.IntegrityError as e:
             session.rollback()
             raise exceptions.PumpWoodIntegrityError(message=str(e))
         except Exception as e:
             print("Exception")
+            session.rollback()
             raise exceptions.PumpWoodObjectDeleteException(message=str(e))
 
         print("self.microservice is not None and self.trigger")
@@ -775,7 +779,10 @@ class PumpWoodFlaskView(View):
             try:
                 session.add(to_save_obj.data)
                 session.commit()
-            except IntegrityError as e:
+            except sqlalchemy.exc.IntegrityError as e:
+                session.rollback()
+                raise exceptions.PumpWoodIntegrityError(message=str(e))
+            except psycopg2.errors.IntegrityError as e:
                 session.rollback()
                 raise exceptions.PumpWoodIntegrityError(message=str(e))
 
@@ -855,7 +862,10 @@ class PumpWoodFlaskView(View):
             try:
                 session.add(to_save_obj.data)
                 session.commit()
-            except IntegrityError as e:
+            except sqlalchemy.exc.IntegrityError as e:
+                session.rollback()
+                raise exceptions.PumpWoodIntegrityError(message=str(e))
+            except psycopg2.errors.IntegrityError as e:
                 session.rollback()
                 raise exceptions.PumpWoodIntegrityError(message=str(e))
 
@@ -1293,7 +1303,10 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
             try:
                 session.bulk_save_objects(objects_to_load)
                 session.commit()
-            except IntegrityError as e:
+            except sqlalchemy.exc.IntegrityError as e:
+                session.rollback()
+                raise exceptions.PumpWoodIntegrityError(message=str(e))
+            except psycopg2.errors.IntegrityError as e:
                 session.rollback()
                 raise exceptions.PumpWoodIntegrityError(message=str(e))
 
