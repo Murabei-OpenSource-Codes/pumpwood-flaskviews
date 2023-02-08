@@ -742,7 +742,7 @@ class PumpWoodFlaskView(View):
         pk = data.pop('pk', None)
         to_save_obj = None
         if pk is not None:
-            mapper = sqlalchemy_inspect(obj.__table__)
+            mapper = sqlalchemy_inspect(self.model_class.__table__)
             self._primary_keys = [
             col.name for col in list(mapper.c) if col.primary_key]
 
