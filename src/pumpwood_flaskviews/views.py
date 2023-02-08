@@ -677,7 +677,6 @@ class PumpWoodFlaskView(View):
             session.rollback()
             raise exceptions.PumpWoodIntegrityError(message=str(e))
         except Exception as e:
-            print("Exception")
             session.rollback()
             raise exceptions.PumpWoodObjectDeleteException(message=str(e))
 
@@ -785,6 +784,9 @@ class PumpWoodFlaskView(View):
             except psycopg2.errors.IntegrityError as e:
                 session.rollback()
                 raise exceptions.PumpWoodIntegrityError(message=str(e))
+            except Exception as e:
+                session.rollback()
+                raise exceptions.PumpWoodException(message=str(e))
 
         # True if files were added to the object
         with_files = False
@@ -868,6 +870,9 @@ class PumpWoodFlaskView(View):
             except psycopg2.errors.IntegrityError as e:
                 session.rollback()
                 raise exceptions.PumpWoodIntegrityError(message=str(e))
+            except Exception as e:
+                session.rollback()
+                raise exceptions.PumpWoodException(message=str(e))
 
         result = retrieve_serializer.dump(to_save_obj.data).data
         if self.microservice is not None and self.trigger:
@@ -1309,6 +1314,9 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
             except psycopg2.errors.IntegrityError as e:
                 session.rollback()
                 raise exceptions.PumpWoodIntegrityError(message=str(e))
+            except Exception as e:
+                session.rollback()
+                raise exceptions.PumpWoodException(message=str(e))
 
             return {'saved_count': len(objects_to_load)}
         else:
