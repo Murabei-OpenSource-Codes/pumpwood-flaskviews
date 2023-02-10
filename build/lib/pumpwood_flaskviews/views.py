@@ -218,14 +218,13 @@ class PumpWoodFlaskView(View):
                     raise exceptions.PumpWoodForbidden(
                         "To retrieve a file you must pass object pk.")
 
-                int_pk = int(first_arg)
                 file_field = request.args.get('file-field')
                 if file_field is None:
                     raise exceptions.PumpWoodForbidden(
                         "To retrieve a file you must pass the file-field " +
                         "url argument.")
                 file_data = self.retrieve_file(
-                    pk=int_pk, file_field=file_field)
+                    pk=first_arg, file_field=file_field)
 
                 return send_file(
                     io.BytesIO(file_data["data"]), as_attachment=True,
@@ -238,14 +237,13 @@ class PumpWoodFlaskView(View):
                     raise exceptions.PumpWoodForbidden(
                         "To retrieve a file you must pass object pk.")
 
-                int_pk = int(first_arg)
                 file_field = request.args.get('file-field')
                 if file_field is None:
                     raise exceptions.PumpWoodForbidden(
                         "To retrieve a file you must pass the file-field " +
                         "url argument.")
                 file_iterator = self.retrieve_file_streaming(
-                    pk=int_pk, file_field=file_field)
+                    pk=first_arg, file_field=file_field)
 
                 return Response(
                     file_iterator, mimetype="application/octet-stream")
@@ -259,8 +257,7 @@ class PumpWoodFlaskView(View):
             if first_arg is None:
                 raise exceptions.PumpWoodException(
                     "Save file stream endpoint have a pk")
-            int_pk = int(first_arg)
-
+            
             # Get url parameters for the end-point
             file_field = request.args.get('file_field')
             if file_field is None:
@@ -268,7 +265,7 @@ class PumpWoodFlaskView(View):
                     "file_field not set as url parameter")
             file_name = request.args.get('file_name')
             return jsonify(self.save_file_streaming(
-                pk=int_pk, file_field=file_field, file_name=file_name))
+                pk=first_arg, file_field=file_field, file_name=file_name))
 
         if end_point == "remove-file-field" and \
                 request.method.lower() in ('delete'):
@@ -526,8 +523,8 @@ class PumpWoodFlaskView(View):
         if file_field not in self.file_fields.keys():
             raise exceptions.PumpWoodForbidden(
                 "file_field must be set on self.file_fields dictionary.")
+        
         object_data = self.retrieve(pk=pk)
-
         file_path = object_data.get(file_field)
         if file_path is None:
             raise exceptions.PumpWoodObjectDoesNotExist(
