@@ -65,6 +65,7 @@ class PumpWoodFlaskView(View):
     # it will be avaiable on routes model and at fill_options for
     # documentation
     foreign_keys = {}
+    relationships = {}
     
     # Set file fields that are on model, it is a dictionary with key as the
     # column name and values as lists of the extensions that will be permitted
@@ -1021,13 +1022,24 @@ class PumpWoodFlaskView(View):
         mapper = alchemy_inspect(cls.model_class)
         dump_only_fields = getattr(cls.serializer.Meta, "dump_only", [])
 
+        # Getting table/class map
+        table_class_map = {}
+        for clazz in cls.db.Model._decl_class_registry.values():
+            try:
+                table_class_map[clazz.__tablename__] = clazz.__name__
+                table_names.append(clazz.__tablename__)
+            except:
+                pass
+
         dict_columns = {}
         for x in mapper.columns:
-            type = None
+            column_inspect = alchemy_inspect(x)
+
+            type_str = None
             if isinstance(x.type, Geometry):
-                type = "geometry"
+                type_str = "geometry"
             else:
-                type = x.type.python_type.__name__
+                type_str = x.type.python_type.__name__
 
             read_only = False
             if x.name in dump_only_fields:
@@ -1037,7 +1049,7 @@ class PumpWoodFlaskView(View):
                 "primary_key": x.primary_key,
                 "column": x.name,
                 "doc_string": x.doc,
-                "type": type,
+                "type": type_str,
                 "nullable": x.nullable,
                 "read_only": read_only,
                 "default": None,
@@ -1052,16 +1064,32 @@ class PumpWoodFlaskView(View):
             if column_info["column"] == "id":
                 column_info["default"] = "#autoincrement#"
                 column_info["doc_string"] = "autoincrement id"
+                relationships = mapper.relationships.items()
+                for rel in relationships:
+                    relation_col = list(rel[1].local_columns)[0]
+                    rel_table = relation_col.table.fullname
+                    rel_class = table_class_map.get(rel_table)
+                    if cls.relationships.get(rel_class) is None:
+                        cls.relationships[rel_class] = relation_col.name
+                column_info["relationships"] = cls.relationships
 
+            foreign_keys = list(x.foreign_keys)
             micro_fk = cls.foreign_keys.get(x.name)
-            if micro_fk is not None:
+            if len(foreign_keys) != 0:
+                # Try to fetch model class using table name
+                fk = foreign_keys[0]
+                fk_table = fk.column.table.fullname
+                fk_class = table_class_map.get(fk_table)
+                column_info["type"] = "foreign_key"
+                column_info["model_class"] = fk_class
+                cls.foreign_keys[x.name] = fk_class
+
+            elif micro_fk is not None:
                 column_info["type"] = "foreign_key"
                 if isinstance(micro_fk, dict):
                     column_info["model_class"] = micro_fk["model_class"]
-                    column_info["many"] = micro_fk["many"]
                 elif isinstance(micro_fk, str):
                     column_info["model_class"] = micro_fk
-                    column_info["many"] = False
                 else:
                     msg = (
                         "foreign_key not correctly defined, check column"
@@ -1127,7 +1155,8 @@ class PumpWoodFlaskView(View):
                 "nullable": False,
                 "read_only": True,
                 "default": "#autoincrement#",
-                "unique": True}
+                "unique": True,
+                "relationships": cls.relationships}
         else:
             dict_columns["pk"] = {
                 "primary_key": True,
