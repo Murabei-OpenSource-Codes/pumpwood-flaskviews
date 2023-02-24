@@ -658,7 +658,7 @@ class PumpWoodFlaskView(View):
             raise exceptions.PumpWoodObjectDoesNotExist(
                 message=message, payload={
                     "model_class": self.model_class.__mapper__.class_.__name__,
-                    "pk": pk})
+                    "pk": converted_pk})
 
         temp_serializer = self.serializer(many=False)
         print("temp_serializer.dump")
