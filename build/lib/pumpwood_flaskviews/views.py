@@ -460,11 +460,17 @@ class PumpWoodFlaskView(View):
         converted_pk = CompositePkBase64Converter.load(pk)
         model_object = self.model_class.query.get(converted_pk)
         if pk is not None and model_object is None:
+            temp_model_class = self.model_class.__mapper__.class_.__name__
+            try:
+                pk = int(pk)
+            except Exception:
+                pass
+
             message = "Requested object {model_class}[{pk}] not found.".format(
-                model_class=self.model_class.__mapper__.class_.__name__, pk=pk)
+                model_class=temp_model_class, pk=pk)
             raise exceptions.PumpWoodObjectDoesNotExist(
                 message=message, payload={
-                    "model_class": self.model_class.__mapper__.class_.__name__,
+                    "model_class": temp_model_class,
                     "pk": pk})
 
         temp_fields = fields or self.list_fields
@@ -501,11 +507,18 @@ class PumpWoodFlaskView(View):
         model_object = self.model_class.query.get(converted_pk)
         retrieve_serializer = self.serializer(many=False)
         if pk is not None and model_object is None:
+            temp_model_class = self.model_class.__mapper__.class_.__name__
+            try:
+                pk = int(pk)
+            except Exception:
+                pass
+
             message = "Requested object {model_class}[{pk}] not found.".format(
-                model_class=self.model_class.__mapper__.class_.__name__, pk=pk)
+                model_class=temp_model_class,
+                pk=pk)
             raise exceptions.PumpWoodObjectDoesNotExist(
                 message=message, payload={
-                    "model_class": self.model_class.__mapper__.class_.__name__,
+                    "model_class": temp_model_class,
                     "pk": pk})
 
         return retrieve_serializer.dump(model_object).data
@@ -539,10 +552,11 @@ class PumpWoodFlaskView(View):
         if not file_exists:
             msg = (
                 "Object not found in storage [{}]").format(file_path)
+            temp_model_class = self.model_class.__mapper__.class_.__name__
             raise exceptions.PumpWoodObjectDoesNotExist(
                 message=msg, payload={
-                    "model_class": self.model_class.__mapper__.class_.__name__,
-                    "pk": pk, "file_path": file_path})
+                    "model_class": temp_model_class,
+                    "pk": object_data["pk"], "file_path": file_path})
 
         file_data = self.storage_object.read_file(file_path)
         file_name = os.path.basename(file_path)
@@ -581,7 +595,8 @@ class PumpWoodFlaskView(View):
             raise exceptions.PumpWoodObjectDoesNotExist(
                 message=msg, payload={
                     "model_class": self.model_class.__mapper__.class_.__name__,
-                    "pk": pk, "file_path": file_path})
+                    "pk": object_data["pk"],
+                    "file_path": file_path})
 
         return self.storage_object.get_read_file_iterator(file_path)
 
@@ -650,24 +665,25 @@ class PumpWoodFlaskView(View):
         ###############################################
 
         converted_pk = CompositePkBase64Converter.load(pk)
-        print("self.model_class.query.get")
         model_object = self.model_class.query.get(converted_pk)
         if pk is not None and model_object is None:
             message = "Requested object {model_class}[{pk}] not found.".format(
                 model_class=self.model_class.__mapper__.class_.__name__, pk=pk)
+            try:
+                pk = int(pk)
+            except Exception:
+                pass
+
             raise exceptions.PumpWoodObjectDoesNotExist(
                 message=message, payload={
                     "model_class": self.model_class.__mapper__.class_.__name__,
-                    "pk": converted_pk})
+                    "pk": pk})
 
         temp_serializer = self.serializer(many=False)
-        print("temp_serializer.dump")
         object_dump = temp_serializer.dump(model_object, many=False).data
-        print("try")
         try:
             session.delete(model_object)
             session.commit()
-            print("session.delete")
         except sqlalchemy.exc.IntegrityError as e:
             session.rollback()
             raise exceptions.PumpWoodIntegrityError(message=str(e))
@@ -751,14 +767,19 @@ class PumpWoodFlaskView(View):
             converted_pk = CompositePkBase64Converter.load(pk)
             model_object = self.model_class.query.get(converted_pk)
             if model_object is None:
+                temp_model_class = self.model_class.__mapper__.class_.__name__
+
+                try:
+                    pk = int(pk)
+                except Exception:
+                    pass
+
                 message = (
                     "Requested object {model_class}[{pk}] not found.").format(
-                    model_class=self.model_class.__mapper__.class_.__name__,
-                    pk=pk)
+                    model_class=temp_model_class, pk=pk)
                 raise exceptions.PumpWoodObjectDoesNotExist(
                     message=message, payload={
-                        "model_class": self.model_class.__mapper__.class_.__name__,
-                        "pk": pk})
+                        "model_class": temp_model_class, "pk": pk})
             to_save_obj = retrieve_serializer.load(
                 data, instance=model_object, session=session)
         else:
@@ -992,11 +1013,18 @@ class PumpWoodFlaskView(View):
                 message_template = "Requested object {model_class}[{pk}] " + \
                     "not found."
                 temp_model_class = self.model_class.__mapper__.class_.__name__
+
+                try:
+                    pk = int(pk)
+                except Exception:
+                    pass
+
                 message = message_template.format(
                     model_class=temp_model_class, pk=pk)
                 raise exceptions.PumpWoodObjectDoesNotExist(
                     message=message, payload={
-                        "model_class": temp_model_class, "pk": pk})
+                        "model_class": temp_model_class,
+                        "pk": pk})
             action = getattr(model_object, action_name)
 
             temp_serializer = self.serializer(
