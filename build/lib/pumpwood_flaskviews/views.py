@@ -503,6 +503,8 @@ class PumpWoodFlaskView(View):
             session.rollback()
         ###############################################
 
+        print("pk:", pk)
+        print("type(pk):", type(pk))
         converted_pk = CompositePkBase64Converter.load(pk)
         model_object = self.model_class.query.get(converted_pk)
         retrieve_serializer = self.serializer(many=False)
@@ -694,7 +696,6 @@ class PumpWoodFlaskView(View):
             session.rollback()
             raise exceptions.PumpWoodObjectDeleteException(message=str(e))
 
-        print("self.microservice is not None and self.trigger")
         if self.microservice is not None and self.trigger:
             # Process ETLTrigger for the model class
             self.microservice.login()
