@@ -170,7 +170,7 @@ class PumpWoodFlaskView(View):
         if "*" not in allowed_extensions:
             if extension not in allowed_extensions:
                 return [(
-                    "File {filename} with extension {extension} not " +
+                    "File '{filename}' with extension '{extension}' not " +
                     "allowed.\n Allowed extensions: {allowed_extensions}"
                 ).format(filename=filename, extension=extension,
                          allowed_extensions=str(allowed_extensions))]
@@ -536,6 +536,11 @@ class PumpWoodFlaskView(View):
         Returns:
             A stream of bytes with da file.
         """
+        if self.storage_object is None:
+            raise exceptions.PumpWoodForbidden(
+                "storage_object attribute not set for view, file operations "
+                "are disable")
+
         if file_field not in self.file_fields.keys():
             raise exceptions.PumpWoodForbidden(
                 "file_field must be set on self.file_fields dictionary.")
@@ -576,6 +581,11 @@ class PumpWoodFlaskView(View):
         Returns:
             A stream of bytes with da file.
         """
+        if self.storage_object is None:
+            raise exceptions.PumpWoodForbidden(
+                "storage_object attribute not set for view, file operations "
+                "are disable")
+
         if file_field not in self.file_fields.keys():
             raise exceptions.PumpWoodForbidden(
                 "file_field must be set on self.file_fields dictionary.")
@@ -616,6 +626,11 @@ class PumpWoodFlaskView(View):
                 view.
             PumpWoodException: Propagates exceptions from storage_objects.
         """
+        if self.storage_object is None:
+            raise exceptions.PumpWoodForbidden(
+                "storage_object attribute not set for view, file operations "
+                "are disable")
+
         if file_field not in self.file_fields.keys():
             raise exceptions.PumpWoodForbidden(
                 "file_field must be set on self.file_fields dictionary.")
@@ -770,11 +785,11 @@ class PumpWoodFlaskView(View):
             if model_object is None:
                 temp_model_class = self.model_class.__mapper__.class_.__name__
 
+                # Convert to integer for error payload
                 try:
                     pk = int(pk)
                 except Exception:
                     pass
-
                 message = (
                     "Requested object {model_class}[{pk}] not found.").format(
                     model_class=temp_model_class, pk=pk)
@@ -788,16 +803,13 @@ class PumpWoodFlaskView(View):
 
         # True if errors were found at the validation of the fields
         with_save_error = to_save_obj.errors != {}
-
-        # Set file names with file_paths dict which is not exposed to API
-        # this is only used by save_file_streaming to set file name
-        for key, path in file_paths.items():
-            setattr(to_save_obj.data, key, path)
-
         if not with_save_error:
             try:
+                # Flush object to receive it's id to create file name,
+                # but does not commit so if there is file errors it won't
+                # persist on database.
                 session.add(to_save_obj.data)
-                session.commit()
+                session.flush()
             except sqlalchemy.exc.IntegrityError as e:
                 session.rollback()
                 raise exceptions.PumpWoodIntegrityError(message=str(e))
@@ -807,6 +819,11 @@ class PumpWoodFlaskView(View):
             except Exception as e:
                 session.rollback()
                 raise exceptions.PumpWoodException(message=str(e))
+
+        # Set file names with file_paths dict which is not exposed to API
+        # this is only used by save_file_streaming to set file name
+        for key, path in file_paths.items():
+            setattr(to_save_obj.data, key, path)
 
         # True if files were added to the object
         with_files = False
@@ -817,58 +834,84 @@ class PumpWoodFlaskView(View):
                 field_errors = []
                 if field in request.files:
                     files_list = request.files.getlist(field)
-                    if len(files_list) != 1:
-                        field_errors.append("More than one file passed.")
-                    else:
-                        file = files_list[0]
-                        filename = secure_filename(file.filename)
-                        field_errors.extend(self._allowed_extension(
-                            filename=filename,
-                            allowed_extensions=self.file_fields[field]))
-                        filename = "{}___{}___{}".format(
-                            to_save_obj.data.id, file_save_time,
-                            filename)
+                    file_obj = None
+                    full_filename = None
 
-                        if len(field_errors) != 0:
-                            to_save_obj.errors[field] = field_errors
+                    # Check if storage object was set
+                    if self.storage_object is None:
+                        msg = (
+                            "storage_object attribute not set for view, "
+                            "file operations are disable")
+                        field_errors.append(msg)
+                        with_save_error = True
+
+                    # Check if only one files was uploaded for the file field
+                    # more than one file is not implemented
+                    if len(files_list) != 1:
+                        msg = "More than one file passed."
+                        field_errors.append(msg)
+                        with_save_error = True
+                    # If one file was uploaded, check if the file extension of
+                    # the uploaded file is allowed 
+                    else:
+                        file_obj = files_list[0]
+                        filename = secure_filename(file_obj.filename)
+                        allowed_extension_errors = self._allowed_extension(
+                            filename=filename,
+                            allowed_extensions=self.file_fields[field])
+                        
+                        # Check if _allowed_extension return errors
+                        if len(allowed_extension_errors) != 0:
+                            field_errors.extend(allowed_extension_errors)
                             with_save_error = True
                         else:
-                            if not with_save_error:
-                                # Set file folder path not using model_class
-                                # if self.file_folder is set, usefull if file
-                                # is passed to other class using path.
-                                model_class = self.model_class.__name__.lower()
-                                if self.file_folder is not None:
-                                    model_class = self.file_folder
-                                file_path = '{model_class}__{field}/'.format(
-                                    model_class=model_class, field=field)
+                            full_filename = "{}___{}___{}".format(
+                                to_save_obj.data.id, file_save_time,
+                                filename)
 
-                                # Save file on storage
-                                storage_filepath = \
-                                    self.storage_object.write_file(
-                                        file_path=file_path,
-                                        file_name=filename,
-                                        data=file.read(),
-                                        content_type=file.content_type,
-                                        if_exists='overide')
-                                setattr(
-                                    to_save_obj.data, field,
-                                    storage_filepath)
+                    if len(field_errors) != 0:
+                        to_save_obj.errors[field] = field_errors
 
-                                # Get hash if there is a {field}_hash on
-                                # object attributes
-                                field_hash = "{}_hash".format(field)
-                                if hasattr(to_save_obj.data, field_hash):
-                                    file_hash = \
-                                        self.storage_object.get_file_hash(
-                                            file_path=storage_filepath)
-                                    setattr(
-                                        to_save_obj.data, field_hash,
-                                        file_hash)
+                    # Check if object does not have errors so far, if have
+                    # does not apply file changes
+                    if not with_save_error:
+                        # Set file folder path not using model_class
+                        # if self.file_folder is set, useful if file
+                        # is passed to other class using path.
+                        model_class = self.model_class.__name__.lower()
+                        if self.file_folder is not None:
+                            model_class = self.file_folder
+                        file_path = '{model_class}__{field}/'.format(
+                            model_class=model_class, field=field)
 
-                                with_files = True
+                        # Save file on storage
+                        storage_filepath = \
+                            self.storage_object.write_file(
+                                file_path=file_path,
+                                file_name=full_filename,
+                                data=file_obj.read(),
+                                content_type=file_obj.content_type,
+                                if_exists='overwrite')
+                        setattr(
+                            to_save_obj.data, field,
+                            storage_filepath)
 
-        if to_save_obj.errors != {}:
+                        # Get hash if there is a {field}_hash on
+                        # object attributes
+                        field_hash = "{}_hash".format(field)
+                        if hasattr(to_save_obj.data, field_hash):
+                            file_hash = \
+                                self.storage_object.get_file_hash(
+                                    file_path=storage_filepath)
+                            setattr(
+                                to_save_obj.data, field_hash,
+                                file_hash)
+
+                        # Mark that a file has been added to object and save
+                        # the path latter.
+                        with_files = True
+
+        if with_save_error:
             message = "error when saving object: " \
                 if pk is None else "error when updating object: "
             payload = to_save_obj.errors
@@ -876,25 +919,33 @@ class PumpWoodFlaskView(View):
             for key, value in to_save_obj.errors.items():
                 message_to_append.append(key + ", " + str(value))
             message = message + "; ".join(message_to_append)
+            session.rollback()
             raise exceptions.PumpWoodObjectSavingException(
                 message=message, payload=payload)
 
-        # If files were added then save objects again
+        # If with files, update object on database to have uploaded file
+        # paths        
         if with_files:
-            try:
-                session.add(to_save_obj.data)
-                session.commit()
-            except sqlalchemy.exc.IntegrityError as e:
-                session.rollback()
-                raise exceptions.PumpWoodIntegrityError(message=str(e))
-            except psycopg2.errors.IntegrityError as e:
-                session.rollback()
-                raise exceptions.PumpWoodIntegrityError(message=str(e))
-            except Exception as e:
-                session.rollback()
-                raise exceptions.PumpWoodException(message=str(e))
+            session.add(to_save_obj.data)
+
+        # Commit file changes to database and persist object with file
+        # information if present.
+        try:
+            session.commit()
+        except sqlalchemy.exc.IntegrityError as e:
+            session.rollback()
+            raise exceptions.PumpWoodIntegrityError(message=str(e))
+        except psycopg2.errors.IntegrityError as e:
+            session.rollback()
+            raise exceptions.PumpWoodIntegrityError(message=str(e))
+        except Exception as e:
+            session.rollback()
+            raise exceptions.PumpWoodException(message=str(e))
 
         result = retrieve_serializer.dump(to_save_obj.data).data
+
+        ###################################
+        # Pumpwood ETLTrigger integration #
         if self.microservice is not None and self.trigger:
             # Process ETLTrigger for the model class
             self.microservice.login()
