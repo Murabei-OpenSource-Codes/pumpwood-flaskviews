@@ -1,11 +1,15 @@
 """Functions and classes to help build PumpWood End-Points."""
 import os
 import io
+import copy
 import pandas as pd
 import textwrap
 import inspect
 import datetime
 import psycopg2
+import sqlalchemy
+import simplejson as json
+from typing import Any
 from sqlalchemy import inspect as sqlalchemy_inspect
 from flask.views import View
 from flask import request, json, Response
@@ -17,9 +21,9 @@ from sqlalchemy.sql.functions import GenericFunction
 from sqlalchemy.sql.schema import Sequence, UniqueConstraint
 from sqlalchemy.sql.expression import False_ as sql_false
 from sqlalchemy.sql.expression import True_ as sql_true
-from sqlalchemy.exc import IntegrityError, ProgrammingError
 from geoalchemy2.types import Geometry
 from pumpwood_communication import exceptions
+from pumpwood_communication.serializers import CompositePkBase64Converter
 from pumpwood_miscellaneous.query import SqlalchemyQueryMisc
 from .auth import AuthFactory
 from .action import load_action_parameters
@@ -34,6 +38,7 @@ class PumpWoodFlaskView(View):
     """
 
     _view_type = "simple"
+    _primary_keys = None
 
     #####################
     # Route information #
@@ -44,17 +49,49 @@ class PumpWoodFlaskView(View):
 
     CHUNK_SIZE = 4096
 
+    # Database connection
     db = None
+    
+    # SQLAlchemy model
     model_class = None
+    
+    # Marshmellow serializer
     serializer = None
+    
+    # List of the fields that will be returned by default on list requests
     list_fields = None
+    
+    # Dict with the foreign key to other models, it does not ensure consistency
+    # it will be avaiable on routes model and at fill_options for
+    # documentation
     foreign_keys = {}
+    relationships = {}
+    
+    # Set file fields that are on model, it is a dictionary with key as the
+    # column name and values as lists of the extensions that will be permitted
+    # on field, '*' will allow any type of file
     file_fields = {}
+
+    # File path on storage will be '{model_class}__{field}/', setting this
+    # attribute will change de behavior to '{file_folder}__{field}/'
     file_folder = None
 
+    # PumpwoodStorage object
     storage_object = None
+
+    # PumpwoodMicroservice object
     microservice = None
+
+    # Set if save, delete, action end-point must trigger ETL Trigger on
+    # request finish.
     trigger = True
+
+    # Some large table are partitioned using one or more columns. Fetching
+    # without setting this columns on filters may lead to reduced performance,
+    # or even query hanging without finishing. If this variable is set it will
+    # not allow flat_list_by_chunks queries on PumpwoodCommunication without
+    # setting at least the first partition as equal or in filter.
+    table_partition = []
 
     # Front-end uses 50 as limit to check if all data have been fetched,
     # if change this parameter, be sure to update front-end list component.
@@ -133,7 +170,7 @@ class PumpWoodFlaskView(View):
         if "*" not in allowed_extensions:
             if extension not in allowed_extensions:
                 return [(
-                    "File {filename} with extension {extension} not " +
+                    "File '{filename}' with extension '{extension}' not " +
                     "allowed.\n Allowed extensions: {allowed_extensions}"
                 ).format(filename=filename, extension=extension,
                          allowed_extensions=str(allowed_extensions))]
@@ -166,18 +203,15 @@ class PumpWoodFlaskView(View):
         if end_point == 'list-one' and request.method.lower() == 'get':
             if first_arg is None:
                 raise exceptions.ObjectDoesNotExist('url pk is None')
-
-            int_pk = int(first_arg)
-            return jsonify(self.list_one(pk=int_pk))
+            return jsonify(self.list_one(pk=first_arg))
 
         # Retrive end-points
         if end_point == 'retrieve':
             if first_arg is None:
                 return jsonify(self.object_template())
 
-            int_pk = int(first_arg)
             if request.method.lower() == 'get':
-                return jsonify(self.retrieve(pk=int_pk))
+                return jsonify(self.retrieve(pk=first_arg))
 
         if end_point == 'retrieve-file':
             if request.method.lower() == 'get':
@@ -185,14 +219,13 @@ class PumpWoodFlaskView(View):
                     raise exceptions.PumpWoodForbidden(
                         "To retrieve a file you must pass object pk.")
 
-                int_pk = int(first_arg)
                 file_field = request.args.get('file-field')
                 if file_field is None:
                     raise exceptions.PumpWoodForbidden(
                         "To retrieve a file you must pass the file-field " +
                         "url argument.")
                 file_data = self.retrieve_file(
-                    pk=int_pk, file_field=file_field)
+                    pk=first_arg, file_field=file_field)
 
                 return send_file(
                     io.BytesIO(file_data["data"]), as_attachment=True,
@@ -205,14 +238,13 @@ class PumpWoodFlaskView(View):
                     raise exceptions.PumpWoodForbidden(
                         "To retrieve a file you must pass object pk.")
 
-                int_pk = int(first_arg)
                 file_field = request.args.get('file-field')
                 if file_field is None:
                     raise exceptions.PumpWoodForbidden(
                         "To retrieve a file you must pass the file-field " +
                         "url argument.")
                 file_iterator = self.retrieve_file_streaming(
-                    pk=int_pk, file_field=file_field)
+                    pk=first_arg, file_field=file_field)
 
                 return Response(
                     file_iterator, mimetype="application/octet-stream")
@@ -226,8 +258,7 @@ class PumpWoodFlaskView(View):
             if first_arg is None:
                 raise exceptions.PumpWoodException(
                     "Save file stream endpoint have a pk")
-            int_pk = int(first_arg)
-
+            
             # Get url parameters for the end-point
             file_field = request.args.get('file_field')
             if file_field is None:
@@ -235,17 +266,16 @@ class PumpWoodFlaskView(View):
                     "file_field not set as url parameter")
             file_name = request.args.get('file_name')
             return jsonify(self.save_file_streaming(
-                pk=int_pk, file_field=file_field, file_name=file_name))
+                pk=first_arg, file_field=file_field, file_name=file_name))
 
         if end_point == "remove-file-field" and \
                 request.method.lower() in ('delete'):
-            int_pk = int(first_arg)
             file_field = request.args.get('file_field')
             if file_field is None:
                 raise exceptions.PumpWoodForbidden(
                     "file_field not set as url parameter")
-            return jsonify(
-                self.remove_file_field(pk=int_pk, file_field=file_field))
+            return jsonify(self.remove_file_field(
+                pk=first_arg, file_field=file_field))
 
         # Delete end-point
         if end_point == 'delete':
@@ -253,8 +283,7 @@ class PumpWoodFlaskView(View):
                 if first_arg is None:
                     raise exceptions.PumpWoodException(
                         "Delete endpoint with delete method must have a pk")
-                int_pk = int(first_arg)
-                return jsonify(self.delete(pk=int_pk))
+                return jsonify(self.delete(pk=first_arg))
 
             if request.method.lower() == 'post':
                 endpoint_dict = data or {}
@@ -301,7 +330,8 @@ class PumpWoodFlaskView(View):
 
         Args:
             No args.
-        Kargs:
+
+        Kwargs:
             filter_dict [dict]: Dictionary to be used in filter operations.
                 See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
             exclude_dict [dict]: Dictionary to be used in filter operations.
@@ -427,13 +457,20 @@ class PumpWoodFlaskView(View):
             session.rollback()
         ###############################################
 
-        model_object = self.model_class.query.get(pk)
+        converted_pk = CompositePkBase64Converter.load(pk)
+        model_object = self.model_class.query.get(converted_pk)
         if pk is not None and model_object is None:
+            temp_model_class = self.model_class.__mapper__.class_.__name__
+            try:
+                pk = int(pk)
+            except Exception:
+                pass
+
             message = "Requested object {model_class}[{pk}] not found.".format(
-                model_class=self.model_class.__mapper__.class_.__name__, pk=pk)
+                model_class=temp_model_class, pk=pk)
             raise exceptions.PumpWoodObjectDoesNotExist(
                 message=message, payload={
-                    "model_class": self.model_class.__mapper__.class_.__name__,
+                    "model_class": temp_model_class,
                     "pk": pk})
 
         temp_fields = fields or self.list_fields
@@ -443,14 +480,18 @@ class PumpWoodFlaskView(View):
         temp_serializer = self.serializer(many=False, only=temp_fields)
         return temp_serializer.dump(model_object).data
 
-    def retrieve(self, pk: int) -> dict:
+    def retrieve(self, pk: Any) -> dict:
         """
         Retrieve object with pk.
 
         Args:
             pk [int]: Primary key of the object to be returned.
+        Kwargs:
+            composite_pk [dict]: Add extra data to combine with
+                main primary, this is necessary mainly on variable
+                tables that are indexed using many keys.
         Return [dict]:
-            A dictonary with the serialized values of the object.
+            A dictionary with the serialized values of the object.
         """
         ###############################################
         # Check if database connection of session is Ok
@@ -462,15 +503,24 @@ class PumpWoodFlaskView(View):
             session.rollback()
         ###############################################
 
-        model_object = self.model_class.query.get(pk)
+        print("pk:", pk)
+        print("type(pk):", type(pk))
+        converted_pk = CompositePkBase64Converter.load(pk)
+        model_object = self.model_class.query.get(converted_pk)
         retrieve_serializer = self.serializer(many=False)
-
         if pk is not None and model_object is None:
+            temp_model_class = self.model_class.__mapper__.class_.__name__
+            try:
+                pk = int(pk)
+            except Exception:
+                pass
+
             message = "Requested object {model_class}[{pk}] not found.".format(
-                model_class=self.model_class.__mapper__.class_.__name__, pk=pk)
+                model_class=temp_model_class,
+                pk=pk)
             raise exceptions.PumpWoodObjectDoesNotExist(
                 message=message, payload={
-                    "model_class": self.model_class.__mapper__.class_.__name__,
+                    "model_class": temp_model_class,
                     "pk": pk})
 
         return retrieve_serializer.dump(model_object).data
@@ -486,11 +536,16 @@ class PumpWoodFlaskView(View):
         Returns:
             A stream of bytes with da file.
         """
+        if self.storage_object is None:
+            raise exceptions.PumpWoodForbidden(
+                "storage_object attribute not set for view, file operations "
+                "are disable")
+
         if file_field not in self.file_fields.keys():
             raise exceptions.PumpWoodForbidden(
                 "file_field must be set on self.file_fields dictionary.")
+        
         object_data = self.retrieve(pk=pk)
-
         file_path = object_data.get(file_field)
         if file_path is None:
             raise exceptions.PumpWoodObjectDoesNotExist(
@@ -504,10 +559,11 @@ class PumpWoodFlaskView(View):
         if not file_exists:
             msg = (
                 "Object not found in storage [{}]").format(file_path)
+            temp_model_class = self.model_class.__mapper__.class_.__name__
             raise exceptions.PumpWoodObjectDoesNotExist(
                 message=msg, payload={
-                    "model_class": self.model_class.__mapper__.class_.__name__,
-                    "pk": pk, "file_path": file_path})
+                    "model_class": temp_model_class,
+                    "pk": object_data["pk"], "file_path": file_path})
 
         file_data = self.storage_object.read_file(file_path)
         file_name = os.path.basename(file_path)
@@ -525,6 +581,11 @@ class PumpWoodFlaskView(View):
         Returns:
             A stream of bytes with da file.
         """
+        if self.storage_object is None:
+            raise exceptions.PumpWoodForbidden(
+                "storage_object attribute not set for view, file operations "
+                "are disable")
+
         if file_field not in self.file_fields.keys():
             raise exceptions.PumpWoodForbidden(
                 "file_field must be set on self.file_fields dictionary.")
@@ -546,7 +607,8 @@ class PumpWoodFlaskView(View):
             raise exceptions.PumpWoodObjectDoesNotExist(
                 message=msg, payload={
                     "model_class": self.model_class.__mapper__.class_.__name__,
-                    "pk": pk, "file_path": file_path})
+                    "pk": object_data["pk"],
+                    "file_path": file_path})
 
         return self.storage_object.get_read_file_iterator(file_path)
 
@@ -564,6 +626,11 @@ class PumpWoodFlaskView(View):
                 view.
             PumpWoodException: Propagates exceptions from storage_objects.
         """
+        if self.storage_object is None:
+            raise exceptions.PumpWoodForbidden(
+                "storage_object attribute not set for view, file operations "
+                "are disable")
+
         if file_field not in self.file_fields.keys():
             raise exceptions.PumpWoodForbidden(
                 "file_field must be set on self.file_fields dictionary.")
@@ -578,7 +645,8 @@ class PumpWoodFlaskView(View):
             session.rollback()
         ###############################################
 
-        obj = self.model_class.query.get(pk)
+        converted_pk = CompositePkBase64Converter.load(pk)
+        obj = self.model_class.query.get(converted_pk)
         file_path = file_path = getattr(obj, file_field)
         if file_path is None:
             raise exceptions.PumpWoodObjectDoesNotExist(
@@ -613,25 +681,34 @@ class PumpWoodFlaskView(View):
             session.rollback()
         ###############################################
 
-        model_object = self.model_class.query.get(pk)
+        converted_pk = CompositePkBase64Converter.load(pk)
+        model_object = self.model_class.query.get(converted_pk)
         if pk is not None and model_object is None:
             message = "Requested object {model_class}[{pk}] not found.".format(
                 model_class=self.model_class.__mapper__.class_.__name__, pk=pk)
+            try:
+                pk = int(pk)
+            except Exception:
+                pass
+
             raise exceptions.PumpWoodObjectDoesNotExist(
                 message=message, payload={
                     "model_class": self.model_class.__mapper__.class_.__name__,
                     "pk": pk})
 
-        temp_serializer = self.serializer(many=False, only=self.list_fields)
+        temp_serializer = self.serializer(many=False)
         object_dump = temp_serializer.dump(model_object, many=False).data
-
         try:
             session.delete(model_object)
             session.commit()
-        except IntegrityError as e:
+        except sqlalchemy.exc.IntegrityError as e:
+            session.rollback()
+            raise exceptions.PumpWoodIntegrityError(message=str(e))
+        except psycopg2.errors.IntegrityError as e:
             session.rollback()
             raise exceptions.PumpWoodIntegrityError(message=str(e))
         except Exception as e:
+            session.rollback()
             raise exceptions.PumpWoodObjectDeleteException(message=str(e))
 
         if self.microservice is not None and self.trigger:
@@ -698,31 +775,27 @@ class PumpWoodFlaskView(View):
         pk = data.pop('pk', None)
         to_save_obj = None
         if pk is not None:
-            #######################################################
-            # Use all primary keys to query the object if present #
-            mapper = sqlalchemy_inspect(self.model_class)
-            primary_keys = [
-                col.name for col in list(mapper.c) if col.primary_key]
-
-            # Pk key will always be considered the first primary key of the
-            # model.
-            get_dict = {primary_keys[0]: pk}
-            for pk_col in primary_keys[1:]:
-                pk_value = data.get(pk_col, None)
-                if pk_value is not None:
-                    get_dict[pk_col] = pk_value
+            mapper = sqlalchemy_inspect(self.model_class.__table__)
+            self._primary_keys = [
+            col.name for col in list(mapper.c) if col.primary_key]
 
             # Query object to update
-            model_object = self.model_class.query.get(get_dict)
+            converted_pk = CompositePkBase64Converter.load(pk)
+            model_object = self.model_class.query.get(converted_pk)
             if model_object is None:
+                temp_model_class = self.model_class.__mapper__.class_.__name__
+
+                # Convert to integer for error payload
+                try:
+                    pk = int(pk)
+                except Exception:
+                    pass
                 message = (
                     "Requested object {model_class}[{pk}] not found.").format(
-                    model_class=self.model_class.__mapper__.class_.__name__,
-                    pk=pk)
+                    model_class=temp_model_class, pk=pk)
                 raise exceptions.PumpWoodObjectDoesNotExist(
                     message=message, payload={
-                        "model_class": self.model_class.__mapper__.class_.__name__,
-                        "pk": pk})
+                        "model_class": temp_model_class, "pk": pk})
             to_save_obj = retrieve_serializer.load(
                 data, instance=model_object, session=session)
         else:
@@ -730,19 +803,27 @@ class PumpWoodFlaskView(View):
 
         # True if errors were found at the validation of the fields
         with_save_error = to_save_obj.errors != {}
+        if not with_save_error:
+            try:
+                # Flush object to receive it's id to create file name,
+                # but does not commit so if there is file errors it won't
+                # persist on database.
+                session.add(to_save_obj.data)
+                session.flush()
+            except sqlalchemy.exc.IntegrityError as e:
+                session.rollback()
+                raise exceptions.PumpWoodIntegrityError(message=str(e))
+            except psycopg2.errors.IntegrityError as e:
+                session.rollback()
+                raise exceptions.PumpWoodIntegrityError(message=str(e))
+            except Exception as e:
+                session.rollback()
+                raise exceptions.PumpWoodException(message=str(e))
 
         # Set file names with file_paths dict which is not exposed to API
         # this is only used by save_file_streaming to set file name
         for key, path in file_paths.items():
             setattr(to_save_obj.data, key, path)
-
-        if not with_save_error:
-            try:
-                session.add(to_save_obj.data)
-                session.commit()
-            except IntegrityError as e:
-                session.rollback()
-                raise exceptions.PumpWoodIntegrityError(message=str(e))
 
         # True if files were added to the object
         with_files = False
@@ -753,58 +834,84 @@ class PumpWoodFlaskView(View):
                 field_errors = []
                 if field in request.files:
                     files_list = request.files.getlist(field)
-                    if len(files_list) != 1:
-                        field_errors.append("More than one file passed.")
-                    else:
-                        file = files_list[0]
-                        filename = secure_filename(file.filename)
-                        field_errors.extend(self._allowed_extension(
-                            filename=filename,
-                            allowed_extensions=self.file_fields[field]))
-                        filename = "{}___{}___{}".format(
-                            to_save_obj.data.id, file_save_time,
-                            filename)
+                    file_obj = None
+                    full_filename = None
 
-                        if len(field_errors) != 0:
-                            to_save_obj.errors[field] = field_errors
+                    # Check if storage object was set
+                    if self.storage_object is None:
+                        msg = (
+                            "storage_object attribute not set for view, "
+                            "file operations are disable")
+                        field_errors.append(msg)
+                        with_save_error = True
+
+                    # Check if only one files was uploaded for the file field
+                    # more than one file is not implemented
+                    if len(files_list) != 1:
+                        msg = "More than one file passed."
+                        field_errors.append(msg)
+                        with_save_error = True
+                    # If one file was uploaded, check if the file extension of
+                    # the uploaded file is allowed 
+                    else:
+                        file_obj = files_list[0]
+                        filename = secure_filename(file_obj.filename)
+                        allowed_extension_errors = self._allowed_extension(
+                            filename=filename,
+                            allowed_extensions=self.file_fields[field])
+                        
+                        # Check if _allowed_extension return errors
+                        if len(allowed_extension_errors) != 0:
+                            field_errors.extend(allowed_extension_errors)
                             with_save_error = True
                         else:
-                            if not with_save_error:
-                                # Set file folder path not using model_class
-                                # if self.file_folder is set, usefull if file
-                                # is passed to other class using path.
-                                model_class = self.model_class.__name__.lower()
-                                if self.file_folder is not None:
-                                    model_class = self.file_folder
-                                file_path = '{model_class}__{field}/'.format(
-                                    model_class=model_class, field=field)
+                            full_filename = "{}___{}___{}".format(
+                                to_save_obj.data.id, file_save_time,
+                                filename)
 
-                                # Save file on storage
-                                storage_filepath = \
-                                    self.storage_object.write_file(
-                                        file_path=file_path,
-                                        file_name=filename,
-                                        data=file.read(),
-                                        content_type=file.content_type,
-                                        if_exists='overide')
-                                setattr(
-                                    to_save_obj.data, field,
-                                    storage_filepath)
+                    if len(field_errors) != 0:
+                        to_save_obj.errors[field] = field_errors
 
-                                # Get hash if there is a {field}_hash on
-                                # object attributes
-                                field_hash = "{}_hash".format(field)
-                                if hasattr(to_save_obj.data, field_hash):
-                                    file_hash = \
-                                        self.storage_object.get_file_hash(
-                                            file_path=storage_filepath)
-                                    setattr(
-                                        to_save_obj.data, field_hash,
-                                        file_hash)
+                    # Check if object does not have errors so far, if have
+                    # does not apply file changes
+                    if not with_save_error:
+                        # Set file folder path not using model_class
+                        # if self.file_folder is set, useful if file
+                        # is passed to other class using path.
+                        model_class = self.model_class.__name__.lower()
+                        if self.file_folder is not None:
+                            model_class = self.file_folder
+                        file_path = '{model_class}__{field}/'.format(
+                            model_class=model_class, field=field)
 
-                                with_files = True
+                        # Save file on storage
+                        storage_filepath = \
+                            self.storage_object.write_file(
+                                file_path=file_path,
+                                file_name=full_filename,
+                                data=file_obj.read(),
+                                content_type=file_obj.content_type,
+                                if_exists='overwrite')
+                        setattr(
+                            to_save_obj.data, field,
+                            storage_filepath)
 
-        if to_save_obj.errors != {}:
+                        # Get hash if there is a {field}_hash on
+                        # object attributes
+                        field_hash = "{}_hash".format(field)
+                        if hasattr(to_save_obj.data, field_hash):
+                            file_hash = \
+                                self.storage_object.get_file_hash(
+                                    file_path=storage_filepath)
+                            setattr(
+                                to_save_obj.data, field_hash,
+                                file_hash)
+
+                        # Mark that a file has been added to object and save
+                        # the path latter.
+                        with_files = True
+
+        if with_save_error:
             message = "error when saving object: " \
                 if pk is None else "error when updating object: "
             payload = to_save_obj.errors
@@ -812,19 +919,33 @@ class PumpWoodFlaskView(View):
             for key, value in to_save_obj.errors.items():
                 message_to_append.append(key + ", " + str(value))
             message = message + "; ".join(message_to_append)
+            session.rollback()
             raise exceptions.PumpWoodObjectSavingException(
                 message=message, payload=payload)
 
-        # If files were added then save objects again
+        # If with files, update object on database to have uploaded file
+        # paths        
         if with_files:
-            try:
-                session.add(to_save_obj.data)
-                session.commit()
-            except IntegrityError as e:
-                session.rollback()
-                raise exceptions.PumpWoodIntegrityError(message=str(e))
+            session.add(to_save_obj.data)
+
+        # Commit file changes to database and persist object with file
+        # information if present.
+        try:
+            session.commit()
+        except sqlalchemy.exc.IntegrityError as e:
+            session.rollback()
+            raise exceptions.PumpWoodIntegrityError(message=str(e))
+        except psycopg2.errors.IntegrityError as e:
+            session.rollback()
+            raise exceptions.PumpWoodIntegrityError(message=str(e))
+        except Exception as e:
+            session.rollback()
+            raise exceptions.PumpWoodException(message=str(e))
 
         result = retrieve_serializer.dump(to_save_obj.data).data
+
+        ###################################
+        # Pumpwood ETLTrigger integration #
         if self.microservice is not None and self.trigger:
             # Process ETLTrigger for the model class
             self.microservice.login()
@@ -938,16 +1059,24 @@ class PumpWoodFlaskView(View):
                 raise exceptions.PumpWoodActionArgsException(
                     "Function is static and pk is not Null")
 
-            model_object = self.model_class.query.get(pk)
+            converted_pk = CompositePkBase64Converter.load(pk)
+            model_object = self.model_class.query.get(converted_pk)
             if model_object is None:
                 message_template = "Requested object {model_class}[{pk}] " + \
                     "not found."
                 temp_model_class = self.model_class.__mapper__.class_.__name__
+
+                try:
+                    pk = int(pk)
+                except Exception:
+                    pass
+
                 message = message_template.format(
                     model_class=temp_model_class, pk=pk)
                 raise exceptions.PumpWoodObjectDoesNotExist(
                     message=message, payload={
-                        "model_class": temp_model_class, "pk": pk})
+                        "model_class": temp_model_class,
+                        "pk": pk})
             action = getattr(model_object, action_name)
 
             temp_serializer = self.serializer(
@@ -973,13 +1102,24 @@ class PumpWoodFlaskView(View):
         mapper = alchemy_inspect(cls.model_class)
         dump_only_fields = getattr(cls.serializer.Meta, "dump_only", [])
 
+        # Getting table/class map
+        table_class_map = {}
+        for clazz in cls.db.Model._decl_class_registry.values():
+            try:
+                table_class_map[clazz.__tablename__] = clazz.__name__
+                table_names.append(clazz.__tablename__)
+            except:
+                pass
+
         dict_columns = {}
         for x in mapper.columns:
-            type = None
+            column_inspect = alchemy_inspect(x)
+
+            type_str = None
             if isinstance(x.type, Geometry):
-                type = "geometry"
+                type_str = "geometry"
             else:
-                type = x.type.python_type.__name__
+                type_str = x.type.python_type.__name__
 
             read_only = False
             if x.name in dump_only_fields:
@@ -989,18 +1129,11 @@ class PumpWoodFlaskView(View):
                 "primary_key": x.primary_key,
                 "column": x.name,
                 "doc_string": x.doc,
-                "type": type,
+                "type": type_str,
                 "nullable": x.nullable,
                 "read_only": read_only,
-                "default": None}
-
-            unique = x.unique
-            if unique is None:
-                if x.primary_key:
-                    unique = True
-                elif unique is None:
-                    unique = False
-            column_info["unique"] = unique
+                "default": None,
+                "unique": x.unique}
 
             if isinstance(x.type, ChoiceType):
                 column_info["type"] = "options"
@@ -1008,20 +1141,35 @@ class PumpWoodFlaskView(View):
                     {"value": choice[0], "description": choice[1]}
                     for choice in x.type.choices]
 
-            if x.primary_key or column_info["column"] == "id":
-                column_info["column"] = "pk"
+            if column_info["column"] == "id":
                 column_info["default"] = "#autoincrement#"
-                column_info["doc_string"] = "object primary key"
+                column_info["doc_string"] = "autoincrement id"
+                relationships = mapper.relationships.items()
+                for rel in relationships:
+                    relation_col = list(rel[1].local_columns)[0]
+                    rel_table = relation_col.table.fullname
+                    rel_class = table_class_map.get(rel_table)
+                    if cls.relationships.get(rel_class) is None:
+                        cls.relationships[rel_class] = relation_col.name
+                column_info["relationships"] = cls.relationships
 
+            foreign_keys = list(x.foreign_keys)
             micro_fk = cls.foreign_keys.get(x.name)
-            if micro_fk is not None:
+            if len(foreign_keys) != 0:
+                # Try to fetch model class using table name
+                fk = foreign_keys[0]
+                fk_table = fk.column.table.fullname
+                fk_class = table_class_map.get(fk_table)
+                column_info["type"] = "foreign_key"
+                column_info["model_class"] = fk_class
+                cls.foreign_keys[x.name] = fk_class
+
+            elif micro_fk is not None:
                 column_info["type"] = "foreign_key"
                 if isinstance(micro_fk, dict):
                     column_info["model_class"] = micro_fk["model_class"]
-                    column_info["many"] = micro_fk["many"]
                 elif isinstance(micro_fk, str):
                     column_info["model_class"] = micro_fk
-                    column_info["many"] = False
                 else:
                     msg = (
                         "foreign_key not correctly defined, check column"
@@ -1070,6 +1218,36 @@ class PumpWoodFlaskView(View):
                     column_info["default"] = arg
 
             dict_columns[column_info["column"]] = column_info
+        
+        ############################################################
+        # Stores primary keys as attribute to help other functions #
+        if cls._primary_keys is None:
+            cls._primary_keys = [
+                key for key, item in dict_columns.items()
+                if item["primary_key"]]
+
+        if len(cls._primary_keys) == 1:
+            dict_columns["pk"] = {
+                "primary_key": True,
+                "column": "id",
+                "doc_string": "table primary key",
+                "type": "#autoincrement#",
+                "nullable": False,
+                "read_only": True,
+                "default": "#autoincrement#",
+                "unique": True,
+                "relationships": cls.relationships}
+        else:
+            dict_columns["pk"] = {
+                "primary_key": True,
+                "column": cls._primary_keys,
+                "doc_string": "base64 encoded json dictionary",
+                "type": "str",
+                "nullable": False,
+                "read_only": True,
+                "default": None,
+                "unique": True,
+                "partition": cls.table_partition}
         return dict_columns
 
     def search_options(self):
@@ -1131,7 +1309,7 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
             format (str): Format to be used in pivot, same argument used in
                           pandas to_dict.
             variables (list) = []: List of the columns to be returned.
-            show_deleted (bool) = False: If column deleted is avaiable
+            show_deleted (bool) = False: If column deleted is available
                 show deleted rows. By default those columns are removed.
             add_pk_column (bool): Add pk column to the results facilitating
                 the pagination of long dataframes.
@@ -1162,8 +1340,9 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
             if len(columns) != 0:
                 raise exceptions.PumpWoodException(
                     "Can not add pk column and pivot information")
-            if ("id" not in model_variables):
-                model_variables = ["id"] + model_variables
+            for pk_col in self._primary_keys:
+                if (pk_col not in model_variables):
+                    model_variables = [pk_col] + model_variables
 
         to_function_dict = {}
         to_function_dict['object_model'] = self.model_class
@@ -1235,9 +1414,15 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
             try:
                 session.bulk_save_objects(objects_to_load)
                 session.commit()
-            except IntegrityError as e:
+            except sqlalchemy.exc.IntegrityError as e:
                 session.rollback()
                 raise exceptions.PumpWoodIntegrityError(message=str(e))
+            except psycopg2.errors.IntegrityError as e:
+                session.rollback()
+                raise exceptions.PumpWoodIntegrityError(message=str(e))
+            except Exception as e:
+                session.rollback()
+                raise exceptions.PumpWoodException(message=str(e))
 
             return {'saved_count': len(objects_to_load)}
         else:
@@ -1401,6 +1586,7 @@ def register_pumpwood_view(app, view, service_object: dict):
         response.status_code = error.status_code
         return response
 
+    # Python errors
     @app.errorhandler(TypeError)
     def handle_type_errors(error):
         pump_exc = exceptions.PumpWoodException(message=str(error))
@@ -1408,9 +1594,24 @@ def register_pumpwood_view(app, view, service_object: dict):
         response.status_code = pump_exc.status_code
         return response
 
-    @app.errorhandler(ProgrammingError)
+    # SQLAlchemy errors
+    @app.errorhandler(sqlalchemy.exc.ProgrammingError)
     def handle_sqlalchemy_programmingerror_errors(error):
         pump_exc = exceptions.PumpWoodException(message=str(error))
+        response = jsonify(pump_exc.to_dict())
+        response.status_code = pump_exc.status_code
+        return response
+
+    @app.errorhandler(sqlalchemy.exc.IntegrityError)
+    def handle_sqlalchemy_invalidrequest_error(error):
+        pump_exc = exceptions.PumpWoodDatabaseError(message=str(error))
+        response = jsonify(pump_exc.to_dict())
+        response.status_code = pump_exc.status_code
+        return response
+
+    @app.errorhandler(sqlalchemy.exc.InvalidRequestError)
+    def handle_sqlalchemy_invalidrequest_error(error):
+        pump_exc = exceptions.PumpWoodQueryException(message=str(error))
         response = jsonify(pump_exc.to_dict())
         response.status_code = pump_exc.status_code
         return response
@@ -1453,13 +1654,6 @@ def register_pumpwood_view(app, view, service_object: dict):
 
     @app.errorhandler(psycopg2.errors.IntegrityError)
     def handle_psycopg2_IntegrityError(error):
-        pump_exc = exceptions.PumpWoodDatabaseError(message=str(error))
-        response = jsonify(pump_exc.to_dict())
-        response.status_code = pump_exc.status_code
-        return response
-
-    @app.errorhandler(psycopg2.errors.InternalError)
-    def handle_psycopg2_InternalError(error):
         pump_exc = exceptions.PumpWoodDatabaseError(message=str(error))
         response = jsonify(pump_exc.to_dict())
         response.status_code = pump_exc.status_code
