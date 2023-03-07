@@ -520,12 +520,7 @@ class PumpWoodFlaskView(View):
             session.rollback()
         ###############################################
 
-<<<<<<< HEAD
-        converted_pk = CompositePkBase64Converter.load(pk)
-        model_object = self.model_class.query.get(converted_pk)
-=======
         model_object = self.pumpwood_pk_get(pk=pk)
->>>>>>> 3bc31754b1e4b4ba216eefc81537e0d176ffdc4c
         retrieve_serializer = self.serializer(many=False)
         if pk is not None and model_object is None:
             temp_model_class = self.model_class.__mapper__.class_.__name__
