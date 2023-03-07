@@ -9,7 +9,7 @@ import datetime
 import psycopg2
 import sqlalchemy
 import simplejson as json
-from typing import Any
+from typing import Any, Union
 from sqlalchemy import inspect as sqlalchemy_inspect
 from flask.views import View
 from flask import request, json, Response
@@ -97,6 +97,24 @@ class PumpWoodFlaskView(View):
     # if change this parameter, be sure to update front-end list component.
     list_paginate_limit = 50
     methods = ['GET', 'POST', 'DELETE', 'PUT']
+
+    @classmethod
+    def pumpwood_pk_get(cls, pk: Union[str, int]) -> object:
+        """
+        Get model_class object using pumpwood pk.
+
+        Pumpwood pk may be integers and base64 strings coding a dictionary
+        with composite primary keys. This function abstract SQLAlchemy
+        query.get to treat both possibilities.
+
+        Args:
+            pk [str, int]: Pumpwood primary key.
+        Return [object]:
+            Returns a SQLAlchemy object with corresponding primary key.
+        """
+        converted_pk = CompositePkBase64Converter.load(pk)
+        model_object = cls.model_class.query.get(converted_pk)
+        return model_object
 
     @classmethod
     def create_route_object(cls, service_object: dict) -> dict:
@@ -457,8 +475,7 @@ class PumpWoodFlaskView(View):
             session.rollback()
         ###############################################
 
-        converted_pk = CompositePkBase64Converter.load(pk)
-        model_object = self.model_class.query.get(converted_pk)
+        model_object = self.pumpwood_pk_get(pk=pk)
         if pk is not None and model_object is None:
             temp_model_class = self.model_class.__mapper__.class_.__name__
             try:
@@ -503,10 +520,7 @@ class PumpWoodFlaskView(View):
             session.rollback()
         ###############################################
 
-        print("pk:", pk)
-        print("type(pk):", type(pk))
-        converted_pk = CompositePkBase64Converter.load(pk)
-        model_object = self.model_class.query.get(converted_pk)
+        model_object = self.pumpwood_pk_get(pk=pk)
         retrieve_serializer = self.serializer(many=False)
         if pk is not None and model_object is None:
             temp_model_class = self.model_class.__mapper__.class_.__name__
@@ -645,8 +659,7 @@ class PumpWoodFlaskView(View):
             session.rollback()
         ###############################################
 
-        converted_pk = CompositePkBase64Converter.load(pk)
-        obj = self.model_class.query.get(converted_pk)
+        obj = self.pumpwood_pk_get(pk=pk)
         file_path = file_path = getattr(obj, file_field)
         if file_path is None:
             raise exceptions.PumpWoodObjectDoesNotExist(
@@ -681,8 +694,7 @@ class PumpWoodFlaskView(View):
             session.rollback()
         ###############################################
 
-        converted_pk = CompositePkBase64Converter.load(pk)
-        model_object = self.model_class.query.get(converted_pk)
+        model_object = self.pumpwood_pk_get(pk=pk)
         if pk is not None and model_object is None:
             message = "Requested object {model_class}[{pk}] not found.".format(
                 model_class=self.model_class.__mapper__.class_.__name__, pk=pk)
@@ -775,13 +787,8 @@ class PumpWoodFlaskView(View):
         pk = data.pop('pk', None)
         to_save_obj = None
         if pk is not None:
-            mapper = sqlalchemy_inspect(self.model_class.__table__)
-            self._primary_keys = [
-            col.name for col in list(mapper.c) if col.primary_key]
-
             # Query object to update
-            converted_pk = CompositePkBase64Converter.load(pk)
-            model_object = self.model_class.query.get(converted_pk)
+            model_object = self.pumpwood_pk_get(pk=pk)
             if model_object is None:
                 temp_model_class = self.model_class.__mapper__.class_.__name__
 
@@ -1059,8 +1066,7 @@ class PumpWoodFlaskView(View):
                 raise exceptions.PumpWoodActionArgsException(
                     "Function is static and pk is not Null")
 
-            converted_pk = CompositePkBase64Converter.load(pk)
-            model_object = self.model_class.query.get(converted_pk)
+            model_object = self.pumpwood_pk_get(pk=pk)
             if model_object is None:
                 message_template = "Requested object {model_class}[{pk}] " + \
                     "not found."
