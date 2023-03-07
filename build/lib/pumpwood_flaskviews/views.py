@@ -51,22 +51,22 @@ class PumpWoodFlaskView(View):
 
     # Database connection
     db = None
-    
+
     # SQLAlchemy model
     model_class = None
-    
+
     # Marshmellow serializer
     serializer = None
-    
+
     # List of the fields that will be returned by default on list requests
     list_fields = None
-    
+
     # Dict with the foreign key to other models, it does not ensure consistency
     # it will be avaiable on routes model and at fill_options for
     # documentation
     foreign_keys = {}
     relationships = {}
-    
+
     # Set file fields that are on model, it is a dictionary with key as the
     # column name and values as lists of the extensions that will be permitted
     # on field, '*' will allow any type of file
@@ -258,7 +258,7 @@ class PumpWoodFlaskView(View):
             if first_arg is None:
                 raise exceptions.PumpWoodException(
                     "Save file stream endpoint have a pk")
-            
+
             # Get url parameters for the end-point
             file_field = request.args.get('file_field')
             if file_field is None:
@@ -503,8 +503,6 @@ class PumpWoodFlaskView(View):
             session.rollback()
         ###############################################
 
-        print("pk:", pk)
-        print("type(pk):", type(pk))
         converted_pk = CompositePkBase64Converter.load(pk)
         model_object = self.model_class.query.get(converted_pk)
         retrieve_serializer = self.serializer(many=False)
@@ -544,7 +542,7 @@ class PumpWoodFlaskView(View):
         if file_field not in self.file_fields.keys():
             raise exceptions.PumpWoodForbidden(
                 "file_field must be set on self.file_fields dictionary.")
-        
+
         object_data = self.retrieve(pk=pk)
         file_path = object_data.get(file_field)
         if file_path is None:
@@ -852,14 +850,14 @@ class PumpWoodFlaskView(View):
                         field_errors.append(msg)
                         with_save_error = True
                     # If one file was uploaded, check if the file extension of
-                    # the uploaded file is allowed 
+                    # the uploaded file is allowed
                     else:
                         file_obj = files_list[0]
                         filename = secure_filename(file_obj.filename)
                         allowed_extension_errors = self._allowed_extension(
                             filename=filename,
                             allowed_extensions=self.file_fields[field])
-                        
+
                         # Check if _allowed_extension return errors
                         if len(allowed_extension_errors) != 0:
                             field_errors.extend(allowed_extension_errors)
@@ -924,7 +922,7 @@ class PumpWoodFlaskView(View):
                 message=message, payload=payload)
 
         # If with files, update object on database to have uploaded file
-        # paths        
+        # paths
         if with_files:
             session.add(to_save_obj.data)
 
@@ -1218,7 +1216,7 @@ class PumpWoodFlaskView(View):
                     column_info["default"] = arg
 
             dict_columns[column_info["column"]] = column_info
-        
+
         ############################################################
         # Stores primary keys as attribute to help other functions #
         if cls._primary_keys is None:
