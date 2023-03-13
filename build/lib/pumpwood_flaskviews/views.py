@@ -1321,6 +1321,16 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
                 the pagination of long dataframes.
             limit (int) = None: Limit results to limit n rows.
         """
+        ###############################################
+        # Check if database connection of session is Ok
+        session = self.db.session
+        try:
+            session.execute("SELECT 1;")
+        except Exception:
+            self.db.engine.dispose()
+            session.rollback()
+        ###############################################
+
         model_variables = variables or self.model_variables
         if type(columns) != list:
             raise exceptions.PumpWoodException(
@@ -1404,6 +1414,16 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
         Return:
             dict: ['saved_count']: total of saved objects.
         """
+        ###############################################
+        # Check if database connection of session is Ok
+        session = self.db.session
+        try:
+            session.execute("SELECT 1;")
+        except Exception:
+            self.db.engine.dispose()
+            session.rollback()
+        ###############################################
+
         if len(self.expected_cols_bulk_save) == 0:
             raise exceptions.PumpWoodException('Bulk save not avaiable.')
 
@@ -1493,6 +1513,16 @@ class PumpWoodDimensionsFlaskView(PumpWoodFlaskView):
         List[str]
             List of the avaiable keys on dimensions database.
         """
+        ###############################################
+        # Check if database connection of session is Ok
+        session = self.db.session
+        try:
+            session.execute("SELECT 1;")
+        except Exception:
+            self.db.engine.dispose()
+            session.rollback()
+        ###############################################
+
         to_function_dict = {}
         to_function_dict['object_model'] = self.model_class
         to_function_dict['filter_dict'] = filter_dict
@@ -1531,6 +1561,16 @@ class PumpWoodDimensionsFlaskView(PumpWoodFlaskView):
         List[str]
             List of the avaiable values for key dimention.
         """
+        ###############################################
+        # Check if database connection of session is Ok
+        session = self.db.session
+        try:
+            session.execute("SELECT 1;")
+        except Exception:
+            self.db.engine.dispose()
+            session.rollback()
+        ###############################################
+
         to_function_dict = {}
         to_function_dict['object_model'] = self.model_class
         if filter_dict is not None:
