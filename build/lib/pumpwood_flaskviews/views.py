@@ -873,7 +873,8 @@ class PumpWoodFlaskView(View):
                             with_save_error = True
                         else:
                             full_filename = "{}___{}___{}".format(
-                                to_save_obj.data.id, file_save_time,
+                                str(to_save_obj.data.id).zfill(15),
+                                file_save_time,
                                 filename)
 
                     if len(field_errors) != 0:
@@ -998,7 +999,12 @@ class PumpWoodFlaskView(View):
         model_class = self.model_class.__name__.lower()
         file_path = '{model_class}__{field}/'.format(
             model_class=model_class, field=file_field)
-        file_name = "{pk}__{filename}".format(pk=pk, filename=file_name)
+
+        file_save_time = datetime.datetime.utcnow().strftime(
+            "%Y-%m-%dT%Hh%Mm%Ss")
+        file_name = "{pk}___{time}___{filename}".format(
+            pk=str(pk).zfill(15), time=file_save_time,
+            filename=file_name)
 
         upload_response = self.storage_object.write_file_stream(
             file_path=file_path, file_name=file_name,
