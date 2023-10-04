@@ -25,8 +25,8 @@ from geoalchemy2.types import Geometry
 from pumpwood_communication import exceptions
 from pumpwood_communication.serializers import CompositePkBase64Converter
 from pumpwood_miscellaneous.query import SqlalchemyQueryMisc
-from .auth import AuthFactory
-from .action import load_action_parameters
+from pumpwood_flaskviews.auth import AuthFactory
+from pumpwood_flaskviews.action import load_action_parameters
 
 
 class PumpWoodFlaskView(View):
@@ -247,8 +247,7 @@ class PumpWoodFlaskView(View):
 
                 return send_file(
                     io.BytesIO(file_data["data"]), as_attachment=True,
-                    attachment_filename=file_data["file_name"],
-                    mimetype=file_data["content_type"])
+                    attachment_filename=file_data["file_name"])
 
         if end_point == 'retrieve-file-streaming':
             if request.method.lower() == 'get':
@@ -317,8 +316,19 @@ class PumpWoodFlaskView(View):
                     return jsonify(
                         self.list_actions_with_objects(objects=data))
                 else:
-                    return jsonify(self.execute_action(
-                        action_name=first_arg, pk=second_arg, parameters=data))
+                    action_result = self.execute_action(
+                        action_name=first_arg,
+                        pk=second_arg, parameters=data)
+                    result_keys = action_result["result"].keys()
+                    is_file_return = (
+                        "__file_name__" in result_keys) and (
+                        "__file__" in result_keys)
+                    if is_file_return:
+                        temp_result = action_result["result"]
+                        return send_file(
+                            temp_result["__file__"], as_attachment=True,
+                            attachment_filename=temp_result["__file_name__"])
+                    return jsonify(action_result)
 
         # options end-points
         if end_point == 'options':
@@ -1120,7 +1130,7 @@ class PumpWoodFlaskView(View):
             try:
                 table_class_map[clazz.__tablename__] = clazz.__name__
                 table_names.append(clazz.__tablename__)
-            except:
+            except Exception:
                 pass
 
         dict_columns = {}
@@ -1484,8 +1494,6 @@ class PumpWoodDimensionsFlaskView(PumpWoodFlaskView):
                 for k in data.keys():
                     data[k] = json.loads(data[k])
 
-        ########################
-        #
         if (end_point == 'list-dimensions' and
                 request.method.lower() == 'post'):
             endpoint_dict = data or {}
@@ -1505,7 +1513,8 @@ class PumpWoodDimensionsFlaskView(PumpWoodFlaskView):
 
     def list_dimensions(self, filter_dict: dict = {},
                         exclude_dict: dict = {}) -> list:
-        """List dimensions avaiable using query.
+        """
+        List dimensions avaiable using query.
 
         Parameters
         ----------

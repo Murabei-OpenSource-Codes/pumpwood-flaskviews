@@ -2,9 +2,9 @@
 import inspect
 import textwrap
 import pandas as pd
-from typing import Dict, List, Optional, cast
+import typing
 from datetime import date, datetime
-from typing import Callable, List
+from typing import Callable, Dict, List, Optional, cast
 
 from pumpwood_communication.exceptions import (
     PumpWoodUnauthorized, PumpWoodException, PumpWoodActionArgsException,
@@ -17,6 +17,51 @@ class Action:
     def __init__(self, func: Callable, info: str):
         """."""
         signature = inspect.signature(func)
+
+        def extract_param_type(param) -> None:
+            """Extract paramter type."""
+            resp = {}
+            if param.annotation == inspect.Parameter.empty:
+                if param.default == inspect.Parameter.empty:
+                    resp["type"] = "Any"
+                else:
+                    resp["type"] = type(param.default).__name__
+            elif type(param.annotation) == str:
+                resp["type"] = param.annotation
+            elif isinstance(param.annotation, type):
+                resp["type"] = param.annotation.__name__
+            elif typing.get_origin(param.annotation) == typing.Literal:
+                resp["type"] = "options"
+                typing_args = typing.get_args(param.annotation)
+                resp["in"] = [
+                    {"value": x, "description": x}
+                    for x in typing_args]
+            else:
+                resp = str(param.annotation).replace(
+                    'typing.', '')
+            return resp
+
+        def extract_return_type(return_annotation):
+            """Extract result type."""
+            resp = {}
+            if return_annotation == inspect.Parameter.empty:
+                resp["type"] = "Any"
+            elif type(return_annotation) == str:
+                resp["type"] = return_annotation
+            elif isinstance(return_annotation, type):
+                resp["type"] = return_annotation.__name__
+            elif (typing.get_origin(return_annotation) == typing.Literal):
+                resp["type"] = "options"
+                typing_args = typing.get_args(return_annotation)
+                resp["in"] = [
+                    {"value": x, "description": x}
+                    for x in typing_args]
+            else:
+                resp = str(return_annotation).replace(
+                    'typing.', '')
+            return resp
+
+        # Getting function parameters hint
         function_parameters = signature.parameters
         parameters = {}
         is_static_function = True
@@ -27,28 +72,17 @@ class Action:
                 continue
 
             param = function_parameters[key]
-            if param.annotation == inspect.Parameter.empty:
-                if inspect.Parameter.empty:
-                    param_type = "Any"
-                else:
-                    param_type = type(param.default).__name__
-            else:
-                param_type = None
-                if type(param.annotation) == str:
-                    param_type = param.annotation
-                else:
-                    if isinstance(param.annotation, type):
-                        param_type = param.annotation.__name__
-                    else:
-                        param_type = str(param.annotation).replace(
-                            'typing.', '')
-
-            parameters[key] = {
-                "required": param.default is inspect.Parameter.empty,
-                "type": param_type}
+            param_type = extract_param_type(param)
+            temp_dict = {
+                "required": param.default is inspect.Parameter.empty}
+            temp_dict.update(param_type)
+            parameters[key] = temp_dict
             if param.default is not inspect.Parameter.empty:
                 parameters[key]['default_value'] = param.default
 
+        # Getting return types:
+        return_annotation = signature.return_annotation
+        self.func_return = extract_return_type(return_annotation)
         self.doc_string = textwrap.dedent(func.__doc__).strip()
         self.action_name = func.__name__
         self.is_static_function = is_static_function
@@ -57,12 +91,14 @@ class Action:
 
     def to_dict(self):
         """Return dict representation of the action."""
-        return {
+        result = {
             "action_name": self.action_name,
             "is_static_function": self.is_static_function,
             "info": self.info,
+            "return": self.func_return,
             "parameters": self.parameters,
             "doc_string": self.doc_string}
+        return result
 
 
 def action(info=""):
