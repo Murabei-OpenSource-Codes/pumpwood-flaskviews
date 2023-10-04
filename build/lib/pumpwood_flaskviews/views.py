@@ -319,15 +319,18 @@ class PumpWoodFlaskView(View):
                     action_result = self.execute_action(
                         action_name=first_arg,
                         pk=second_arg, parameters=data)
-                    result_keys = action_result["result"].keys()
-                    is_file_return = (
-                        "__file_name__" in result_keys) and (
-                        "__file__" in result_keys)
-                    if is_file_return:
-                        temp_result = action_result["result"]
-                        return send_file(
-                            temp_result["__file__"], as_attachment=True,
-                            attachment_filename=temp_result["__file_name__"])
+                    result = action_result["result"]
+                    if type(result) == dict:
+                        result_keys = result.keys()
+                        is_file_return = (
+                            "__file_name__" in result_keys) and (
+                            "__file__" in result_keys)
+                        if is_file_return:
+                            temp_result = action_result["result"]
+                            return send_file(
+                                temp_result["__file__"], as_attachment=True,
+                                attachment_filename=temp_result[
+                                    "__file_name__"])
                     return jsonify(action_result)
 
         # options end-points
