@@ -386,6 +386,16 @@ class PumpWoodFlaskView(View):
             self.db.engine.dispose()
             session.rollback()
         ###############################################
+        if hasattr(self.model_class, 'deleted'):
+            exclude_dict_keys = exclude_dict.keys()
+            any_delete = False
+            for key in exclude_dict_keys:
+                first = key.split("__")[0]
+                if first == "deleted":
+                    any_delete = True
+                    break
+            if not any_delete:
+                exclude_dict["deleted"] = True
 
         to_function_dict = {}
         to_function_dict['object_model'] = self.model_class
@@ -441,6 +451,16 @@ class PumpWoodFlaskView(View):
             self.db.engine.dispose()
             session.rollback()
         ###############################################
+        if hasattr(self.model_class, 'deleted'):
+            exclude_dict_keys = exclude_dict.keys()
+            any_delete = False
+            for key in exclude_dict_keys:
+                first = key.split("__")[0]
+                if first == "deleted":
+                    any_delete = True
+                    break
+            if not any_delete:
+                exclude_dict["deleted"] = True
 
         to_function_dict = {}
         to_function_dict['object_model'] = self.model_class
@@ -695,8 +715,24 @@ class PumpWoodFlaskView(View):
         retrieve_serializer = self.serializer(many=False)
         return retrieve_serializer.dump(empty_object).data
 
-    def delete(self, pk):
-        """Delete object."""
+    def delete(self, pk: int, force_delete: bool = False) -> dict:
+        """
+        Delete object.
+
+        If object have deleted as field, this function will not delete
+        the object and will set the field to True.
+
+        Setting force_delete to True will disable this feature and delete the
+        object even with deleted field.
+
+        Args:
+            pk [int]: Pk of the object to be deleted.
+        Kwargs:
+            force_delete [bool] = False: If True force delete of the object
+                even if object has deleted as field.
+        Return [dict]:
+            Return the excluded object.
+        """
         ###############################################
         # Check if database connection of session is Ok
         session = self.db.session
@@ -723,18 +759,25 @@ class PumpWoodFlaskView(View):
 
         temp_serializer = self.serializer(many=False)
         object_dump = temp_serializer.dump(model_object, many=False).data
-        try:
-            session.delete(model_object)
+
+        # Remove deleted entries from results
+        if hasattr(self.model_class, 'deleted') and not force_delete:
+            model_object.deleted = True
+            session.add(model_object)
             session.commit()
-        except sqlalchemy.exc.IntegrityError as e:
-            session.rollback()
-            raise exceptions.PumpWoodIntegrityError(message=str(e))
-        except psycopg2.errors.IntegrityError as e:
-            session.rollback()
-            raise exceptions.PumpWoodIntegrityError(message=str(e))
-        except Exception as e:
-            session.rollback()
-            raise exceptions.PumpWoodObjectDeleteException(message=str(e))
+        else:
+            try:
+                session.delete(model_object)
+                session.commit()
+            except sqlalchemy.exc.IntegrityError as e:
+                session.rollback()
+                raise exceptions.PumpWoodIntegrityError(message=str(e))
+            except psycopg2.errors.IntegrityError as e:
+                session.rollback()
+                raise exceptions.PumpWoodIntegrityError(message=str(e))
+            except Exception as e:
+                session.rollback()
+                raise exceptions.PumpWoodObjectDeleteException(message=str(e))
 
         if self.microservice is not None and self.trigger:
             # Process ETLTrigger for the model class
@@ -747,8 +790,17 @@ class PumpWoodFlaskView(View):
                     "action_name": None})
         return object_dump
 
-    def delete_many(self, filter_dict={}, exclude_dict={}):
-        """Delete object."""
+    def delete_many(self, filter_dict: dict = {},
+                    exclude_dict: dict = {}) -> bool:
+        """
+        Delete many objects using query dictionaries as filter.
+
+        Args:
+            filter_dict [dict] = {}: Filter objects that will be deleted.
+            exclude_dict [dict] = {}: Exclude objects that will be deleted.
+        Return [bool]:
+            Return True.
+        """
         ###############################################
         # Check if database connection of session is Ok
         session = self.db.session
