@@ -75,7 +75,9 @@ class AuthFactory:
         return wrapped
 
     @classmethod
-    def check_authorization(cls):
+    def check_authorization(cls, request_method: str = None, path: str = None,
+                            end_point: str = None, first_arg: str = None,
+                            second_arg: str = None, payload_text: str = None):
         """
         Check if user is authenticated using Auth API.
 
@@ -94,16 +96,31 @@ class AuthFactory:
             raise Exception("AuthFactory.server_url not set")
 
         token = flask_request.headers.get('Authorization')
+        ingress_request = flask_request.headers.get(
+            'X-PUMPWOOD-Ingress-Request')
         if not token:
             raise exceptions.PumpWoodUnauthorized(
                 'No Authorization header provided')
 
-        resp = requests.get(
-            cls.auth_check_url, headers={'Authorization': token})
+        # Backward compatibility with previous Authorization Check
+        auth_headers = {'Authorization': token}
+        if ingress_request is not None:
+            auth_headers['X-PUMPWOOD-Ingress-Request'] = ingress_request
+        if request_method is None:
+            resp = requests.get(cls.auth_check_url, headers=auth_headers)
+        else:
+            resp = requests.post(
+                cls.auth_check_url, json={
+                    'request_method': request_method,
+                    'path': path, 'end_point': end_point,
+                    'first_arg': first_arg, 'second_arg': second_arg,
+                    'payload': payload_text[:300]},
+                headers=auth_headers)
+        # Raise PumpWoodUnauthorized is token is not valid
         if resp.status_code != 200:
             raise exceptions.PumpWoodUnauthorized(
-                'Token autorization failed')
-
+                message='Token autorization failed',
+                payload=resp.json())
         return resp
 
     @classmethod

@@ -196,8 +196,13 @@ class PumpWoodFlaskView(View):
 
     def dispatch_request(self, end_point, first_arg=None, second_arg=None):
         """Dispatch request acordint o end_point, first_arg and second_arg."""
-        AuthFactory.check_authorization()
+        AuthFactory.check_authorization(
+            request_method=request.method.lower(),
+            path=request.path, end_point=end_point,
+            first_arg=first_arg, second_arg=second_arg,
+            payload_text=request.get_data()[:300])
 
+        # Extract data for post requests
         data = None
         if request.method.lower() in ('post', 'put'):
             if request.mimetype == 'application/json':
