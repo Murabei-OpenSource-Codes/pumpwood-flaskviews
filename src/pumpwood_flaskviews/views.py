@@ -1,7 +1,6 @@
 """Functions and classes to help build PumpWood End-Points."""
 import os
 import io
-import copy
 import pandas as pd
 import textwrap
 import inspect
@@ -9,10 +8,10 @@ import datetime
 import psycopg2
 import sqlalchemy
 import simplejson as json
+from typing import List
 from typing import Any, Union
-from sqlalchemy import inspect as sqlalchemy_inspect
 from flask.views import View
-from flask import request, json, Response
+from flask import request, Response
 from flask import jsonify, send_file
 from werkzeug.utils import secure_filename
 from sqlalchemy import inspect as alchemy_inspect
@@ -97,6 +96,26 @@ class PumpWoodFlaskView(View):
     # if change this parameter, be sure to update front-end list component.
     list_paginate_limit = 50
     methods = ['GET', 'POST', 'DELETE', 'PUT']
+
+    # List avaiable microservices
+    available_microservices = None
+
+    def get_available_microservices(self) -> List[str]:
+        """
+        Get avaiable microservices.
+
+        Args:
+            No args.
+        Kwargs:
+            No kwargs.
+        """
+        if self.microservice is None:
+            return []
+
+        if self.available_microservices is None:
+            self.available_microservices = \
+                self.microservice.list_registered_routes().keys()
+        return self.available_microservices
 
     @classmethod
     def pumpwood_pk_get(cls, pk: Union[str, int]) -> object:
@@ -784,7 +803,9 @@ class PumpWoodFlaskView(View):
                 session.rollback()
                 raise exceptions.PumpWoodObjectDeleteException(message=str(e))
 
-        if self.microservice is not None and self.trigger:
+        available_microservices = self.get_available_microservices()
+        pumpwood_etl_ok = 'pumpwood-etl-app' in available_microservices
+        if self.microservice is not None and self.trigger and pumpwood_etl_ok:
             # Process ETLTrigger for the model class
             self.microservice.login()
             self.microservice.execute_action(
@@ -1024,7 +1045,9 @@ class PumpWoodFlaskView(View):
 
         ###################################
         # Pumpwood ETLTrigger integration #
-        if self.microservice is not None and self.trigger:
+        available_microservices = self.get_available_microservices()
+        pumpwood_etl_ok = 'pumpwood-etl-app' in available_microservices
+        if self.microservice is not None and self.trigger and pumpwood_etl_ok:
             # Process ETLTrigger for the model class
             self.microservice.login()
             if pk is None:
@@ -1168,7 +1191,9 @@ class PumpWoodFlaskView(View):
         loaded_parameters = load_action_parameters(action, parameters)
         result = action(**loaded_parameters)
 
-        if self.microservice is not None and self.trigger:
+        available_microservices = self.get_available_microservices()
+        pumpwood_etl_ok = 'pumpwood-etl-app' in available_microservices
+        if self.microservice is not None and self.trigger and pumpwood_etl_ok:
             self.microservice.login()
             self.microservice.execute_action(
                 "ETLTrigger", action="process_triggers", parameters={
