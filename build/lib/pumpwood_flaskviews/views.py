@@ -98,7 +98,21 @@ class PumpWoodFlaskView(View):
     methods = ['GET', 'POST', 'DELETE', 'PUT']
 
     # List avaiable microservices
+    __last_available_microservices = None
     available_microservices = None
+
+    def check_microservices(self, microservice: str) -> bool:
+        """
+        Check if microservice is avaiable.
+
+        Args:
+            microservice [str]: Name of the microservice to check if is
+                avaiable on Kong services.
+        Return [bool]:
+            True if microservice is avaiable o kong services.
+        """
+        list_microservices = self.get_available_microservices()
+        return microservice in list_microservices
 
     def get_available_microservices(self) -> List[str]:
         """
@@ -115,6 +129,13 @@ class PumpWoodFlaskView(View):
         if self.available_microservices is None:
             self.available_microservices = \
                 self.microservice.list_registered_routes().keys()
+            self.__last_available_microservices = datetime.datetime.utcnow()
+        else:
+            now_time = datetime.datetime.utcnow()
+            time_since_update = now_time - self.__last_available_microservices
+            if datetime.timedelta(hours=1) < time_since_update:
+                self.available_microservices = \
+                    self.microservice.list_registered_routes().keys()
         return self.available_microservices
 
     @classmethod
