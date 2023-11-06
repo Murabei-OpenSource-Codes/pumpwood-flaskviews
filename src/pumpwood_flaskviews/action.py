@@ -16,11 +16,9 @@ class Action:
 
     def __init__(self, func: Callable, info: str):
         """."""
-        signature = inspect.signature(func)
-
         def extract_param_type(param) -> None:
             """Extract paramter type."""
-            resp = {}
+            resp = {"many": False}
             if param.annotation == inspect.Parameter.empty:
                 if param.default == inspect.Parameter.empty:
                     resp["type"] = "Any"
@@ -36,14 +34,21 @@ class Action:
                 resp["in"] = [
                     {"value": x, "description": x}
                     for x in typing_args]
+            elif typing.get_origin(param.annotation) == list:
+                resp["many"] = True
+                list_args = typing.get_args(param.annotation)
+                if len(list_args) == 0:
+                    resp["type"] = "Any"
+                else:
+                    resp["type"] = list_args[0].__name__
             else:
-                resp = str(param.annotation).replace(
+                resp["type"] = str(param.annotation).replace(
                     'typing.', '')
             return resp
 
         def extract_return_type(return_annotation):
             """Extract result type."""
-            resp = {}
+            resp = {"many": False}
             if return_annotation == inspect.Parameter.empty:
                 resp["type"] = "Any"
             elif type(return_annotation) == str:
@@ -56,20 +61,26 @@ class Action:
                 resp["in"] = [
                     {"value": x, "description": x}
                     for x in typing_args]
+            elif typing.get_origin(param.annotation) == list:
+                resp["many"] = True
+                list_args = typing.get_args(param.annotation)
+                if len(list_args) == 0:
+                    resp["type"] = "Any"
+                else:
+                    resp["type"] = list_args[0].__name__
             else:
-                resp = str(return_annotation).replace(
+                resp["type"] = str(return_annotation).replace(
                     'typing.', '')
             return resp
 
         # Getting function parameters hint
+        signature = inspect.signature(func)
         function_parameters = signature.parameters
         parameters = {}
         is_static_function = True
         for key in function_parameters.keys():
-            if key in ['self', 'cls']:
-                if key == "self":
-                    is_static_function = False
-                continue
+            if key == "self":
+                is_static_function = False
 
             param = function_parameters[key]
             param_type = extract_param_type(param)
