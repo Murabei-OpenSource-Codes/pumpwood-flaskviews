@@ -97,7 +97,7 @@ class AuthFactory:
 
         token = flask_request.headers.get('Authorization')
         ingress_request = flask_request.headers.get(
-            'X-PUMPWOOD-Ingress-Request')
+            'X-PUMPWOOD-Ingress-Request', 'NOT-EXTERNAL')
         if not token:
             raise exceptions.PumpWoodUnauthorized(
                 'No Authorization header provided')
@@ -114,7 +114,8 @@ class AuthFactory:
                     'request_method': request_method,
                     'path': path, 'end_point': end_point,
                     'first_arg': first_arg, 'second_arg': second_arg,
-                    'payload': payload_text[:300]},
+                    'payload': payload_text[:300],
+                    'ingress_request': ingress_request},
                 headers=auth_headers)
         # Raise PumpWoodUnauthorized is token is not valid
         if resp.status_code != 200:
