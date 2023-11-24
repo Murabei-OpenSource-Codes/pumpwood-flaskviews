@@ -249,8 +249,8 @@ class PumpWoodFlaskView(View):
                 data = request.get_json()
             else:
                 data = request.form.to_dict()
-                for k in data.keys():
-                    data[k] = json.loads(data[k])
+                json_data = json.loads(data.pop("__json__", '{}'))
+                data.update(json_data)
 
         # List end-points
         if end_point == 'list' and request.method.lower() == 'post':
