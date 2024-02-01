@@ -8,7 +8,6 @@ import datetime
 import psycopg2
 import sqlalchemy
 import simplejson as json
-import pandas as pd
 from typing import List
 from typing import Any, Union
 from flask.views import View
@@ -1267,6 +1266,7 @@ class PumpWoodFlaskView(View):
 
     @classmethod
     def cls_fields_options(cls):
+        """Return description of the model fields."""
         mapper = alchemy_inspect(cls.model_class)
         dump_only_fields = getattr(cls.serializer.Meta, "dump_only", [])
 
@@ -1275,13 +1275,13 @@ class PumpWoodFlaskView(View):
         for clazz in cls.db.Model._decl_class_registry.values():
             try:
                 table_class_map[clazz.__tablename__] = clazz.__name__
-                table_names.append(clazz.__tablename__)
+                # table_names.append(clazz.__tablename__)
             except Exception:
                 pass
 
         dict_columns = {}
         for x in mapper.columns:
-            column_inspect = alchemy_inspect(x)
+            # column_inspect = alchemy_inspect(x)
 
             type_str = None
             if isinstance(x.type, Geometry):
@@ -1525,7 +1525,6 @@ class PumpWoodFlaskView(View):
         # If it is gui interface then set gui_readonly as read-only
         # this will limit fields that are not read-only but should not
         # be edited be the user
-        print("user_type:", user_type)
         if user_type == 'gui':
             for key, item in fill_options.items():
                 item["read_only"] = key in gui_readonly
