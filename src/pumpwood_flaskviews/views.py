@@ -205,8 +205,6 @@ class PumpWoodFlaskView(View):
 
             route_url = '/rest/%s/' % model_class_name.lower()
             route_name = model_class_name.lower()
-
-            search_options = cls.cls_fields_options()
             notes = textwrap.dedent(cls.model_class.__doc__).strip()
 
             # Checking unique constraints
@@ -219,7 +217,6 @@ class PumpWoodFlaskView(View):
                         unique_docs += "\n\n- Unique Constraints:"
                     unique_docs += "\n[" + unique_columns + "]"
             notes = notes + unique_docs
-
             route_object = {
                 "model_class": "KongRoute",
                 "service_id": service_object["pk"],
@@ -235,8 +232,9 @@ class PumpWoodFlaskView(View):
                     "foreign_keys": cls.foreign_keys,
                     "list_fields": cls.list_fields,
                     "file_fields": cls.file_fields,
-                    "search_options": search_options
-                }}
+                    'gui_retrieve_fieldset': cls.gui_retrieve_fieldset,
+                    'gui_verbose_field': cls.gui_verbose_field,
+                    'gui_readonly': cls.gui_readonly}}
             try:
                 cls.microservice.save(route_object)
             except Exception as e:
