@@ -26,6 +26,7 @@ from pumpwood_communication.serializers import CompositePkBase64Converter
 from pumpwood_miscellaneous.query import SqlalchemyQueryMisc
 from pumpwood_flaskviews.auth import AuthFactory
 from pumpwood_flaskviews.action import load_action_parameters
+from pumpwood_i8n.singletons import pumpwood_i8n as _
 
 
 class PumpWoodFlaskView(View):
@@ -1186,9 +1187,28 @@ class PumpWoodFlaskView(View):
     def list_actions(self):
         """List model exposed actions."""
         actions = self.get_actions()
-        action_descriptions = [
-            action.action_object.to_dict()
-            for name, action in actions.items()]
+        action_descriptions = []
+        model_class = self.model_class.__name__
+
+        # Use I8n object to translate
+        translation_tag_template = "{model_class}__action__{action}"
+        for name, action in actions.items():
+            action_dict = action.action_object.to_dict()
+            tag = translation_tag_template.format(
+                model_class=model_class, action=action_dict["action_name"])
+
+            #########################################################
+            # Translate action_name and info to end-user at verbose #
+            action_dict["action_name__verbose"] = _.t(
+                sentence=action_dict["action_name"], tag=tag + "__action_name")
+            action_dict["info__verbose"] = _.t(
+                sentence=action_dict["info"], tag=tag + "__info")
+            for key, item in action_dict["parameters"].items():
+                item["verbose_name"] = _.t(
+                    sentence=key, tag=tag + "__parameters")
+            #########################################################
+
+            action_descriptions.append(action_dict)
         return action_descriptions
 
     def list_actions_with_objects(self, objects):
@@ -1280,6 +1300,8 @@ class PumpWoodFlaskView(View):
                 pass
 
         dict_columns = {}
+        model_class = cls.model_class.__name__
+        translation_tag_template = "{model_class}__fields__{field}"
         for x in mapper.columns:
             # column_inspect = alchemy_inspect(x)
 
@@ -1293,10 +1315,20 @@ class PumpWoodFlaskView(View):
             if x.name in dump_only_fields:
                 read_only = True
 
+            column = x.name
+            help_text = x.doc
+            tag = translation_tag_template.format(
+                model_class=model_class, field=column)
+            column__verbose = _.t(
+                sentence=column, tag=tag + "__column")
+            help_text__verbose = _.t(
+                sentence=help_text, tag=tag + "__help_text")
             column_info = {
                 "primary_key": x.primary_key,
-                "column": x.name,
-                "doc_string": x.doc,
+                "column": column,
+                "column__verbose": column__verbose,
+                "help_text": help_text,
+                "help_text__verbose": help_text__verbose,
                 "type": type_str,
                 "nullable": x.nullable,
                 "read_only": read_only,
@@ -1395,10 +1427,21 @@ class PumpWoodFlaskView(View):
                 if item["primary_key"]]
 
         if len(cls._primary_keys) == 1:
+            column = "pk"
+            help_text = "table primary key"
+            tag = translation_tag_template.format(
+                model_class=model_class, field=column)
+            column__verbose = _.t(
+                sentence=column, tag=tag + "__column")
+            help_text__verbose = _.t(
+                sentence=help_text, tag=tag + "__help_text")
+
             dict_columns["pk"] = {
                 "primary_key": True,
-                "column": "id",
-                "doc_string": "table primary key",
+                "column": column,
+                "column__verbose": column__verbose,
+                "help_text": help_text,
+                "help_text__verbose": help_text__verbose,
                 "type": "#autoincrement#",
                 "nullable": False,
                 "read_only": True,
@@ -1406,10 +1449,22 @@ class PumpWoodFlaskView(View):
                 "unique": True,
                 "relationships": cls.relationships}
         else:
+            column = "pk"
+            help_text = "base64 encoded json dictionary"
+            tag = translation_tag_template.format(
+                model_class=model_class, field=column)
+            help_text__verbose = _.t(
+                sentence=help_text, tag=tag + "__help_text")
+            column__verbose = [
+                _.t(sentence=x, tag=tag + "__column")
+                for x in cls._primary_keys]
+
             dict_columns["pk"] = {
                 "primary_key": True,
                 "column": cls._primary_keys,
-                "doc_string": "base64 encoded json dictionary",
+                "column__verbose": column__verbose,
+                "help_text": help_text,
+                "help_text__verbose": help_text__verbose,
                 "type": "str",
                 "nullable": False,
                 "read_only": True,

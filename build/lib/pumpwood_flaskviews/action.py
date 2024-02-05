@@ -61,9 +61,9 @@ class Action:
                 resp["in"] = [
                     {"value": x, "description": x}
                     for x in typing_args]
-            elif typing.get_origin(param.annotation) == list:
+            elif typing.get_origin(return_annotation) == list:
                 resp["many"] = True
-                list_args = typing.get_args(param.annotation)
+                list_args = typing.get_args(return_annotation)
                 if len(list_args) == 0:
                     resp["type"] = "Any"
                 else:
@@ -81,6 +81,12 @@ class Action:
         for key in function_parameters.keys():
             if key == "self":
                 is_static_function = False
+                # Does not return self parameter to user
+                continue
+
+            if key == "cls":
+                # Does not return cls parameter from class functions
+                continue
 
             param = function_parameters[key]
             param_type = extract_param_type(param)
