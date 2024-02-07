@@ -1336,7 +1336,10 @@ class PumpWoodFlaskView(View):
             if isinstance(x.type, ChoiceType):
                 column_info["type"] = "options"
                 column_info["in"] = [
-                    {"value": choice[0], "description": choice[1]}
+                    {"value": choice[0],
+                     "description": _.t(
+                        sentence=choice[1],
+                        tag=tag + "__choice__" + choice[0])}
                     for choice in x.type.choices]
 
             if column_info["column"] == "id":

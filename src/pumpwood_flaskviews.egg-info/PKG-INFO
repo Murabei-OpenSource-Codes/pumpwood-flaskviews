@@ -1,11 +1,12 @@
 Metadata-Version: 2.1
 Name: pumpwood-flaskviews
-Version: 0.55
+Version: 0.56
 Summary: Assist creation of flask views in Pumpwood format..
 Home-page: https://github.com/Murabei-OpenSource-Codes/pumpwood-flaskviews
 Author: Murabei Data Science
 Author-email: a.baceti@murabei.com
 License: BSD-3-Clause License
+Platform: UNKNOWN
 Classifier: Programming Language :: Python :: 3
 Classifier: Operating System :: OS Independent
 Requires-Python: >=3.6
@@ -224,3 +225,5 @@ class PersonView(PumpWoodFlaskView):
         'married_to_id': {'model_class': 'Person', 'many': False}
     }
 ```
+
+
