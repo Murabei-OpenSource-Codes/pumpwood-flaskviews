@@ -1681,6 +1681,10 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
             if len(columns) != 0:
                 raise exceptions.PumpWoodException(
                     "Can not add pk column and pivot information")
+            # TODO: Isso é uma gabiarra máxima!!!
+            # Is self._primary_keys is None, load
+            if self._primary_keys is None:
+                self.cls_fields_options()
             for pk_col in self._primary_keys:
                 if (pk_col not in model_variables):
                     model_variables = [pk_col] + model_variables
