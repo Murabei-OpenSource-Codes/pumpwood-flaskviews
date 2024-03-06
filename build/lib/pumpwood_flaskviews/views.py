@@ -1583,7 +1583,8 @@ class PumpWoodFlaskView(View):
         # be edited be the user
         if user_type == 'gui':
             for key, item in fill_options.items():
-                item["read_only"] = key in gui_readonly
+                if key in gui_readonly:
+                    item["read_only"] = True
         return {
             "field_descriptions": fill_options,
             "gui_readonly": gui_readonly
