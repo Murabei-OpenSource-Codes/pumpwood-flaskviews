@@ -291,7 +291,7 @@ class PumpWoodFlaskView(View):
                 raise exceptions.ObjectDoesNotExist('url pk is None')
             return jsonify(self.list_one(pk=first_arg))
 
-        # Retrive end-points
+        # retrieve end-points
         if end_point == 'retrieve':
             if first_arg is None:
                 return jsonify(self.object_template())
@@ -414,7 +414,7 @@ class PumpWoodFlaskView(View):
             if request.method.lower() == 'get':
                 return jsonify(self.list_view_options())
 
-        if end_point == 'retrive-options':
+        if end_point == 'retrieve-options':
             if request.method.lower() == 'get':
                 return jsonify(self.retrieve_view_options())
 

@@ -127,7 +127,7 @@ class AuthFactory:
     @classmethod
     def retrieve_authenticated_user(cls):
         """
-        Retrive user data using Auth API.
+        retrieve user data using Auth API.
 
         Args:
             token (str): Token used in authentication.
