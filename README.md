@@ -134,7 +134,105 @@ and model_class.
 ## pumpwood_flaskviews.views
 Define pumpwood basic views. They have always the same pattern:
 
-<b>PumpWoodFlaskView</b>
+
+### PumpWoodFlaskView
+
+#### Class Attributes
+##### description [str]:
+Description of the model, this can be used to display model
+navegation on side bar. During call to end-point information
+this attribute will be passed to i8s for translation.
+
+##### dimensions [dict]:
+Dictionary of tag/value, this will be registred at model class
+route.
+
+##### icon [str]:
+String setting icon name to be display at the frontend.
+
+##### db [SQLAlchemy Database]:
+Connection to database.
+
+##### model_class [SQLAlchemy Model]:
+Model class of Flask SQLAlchemy.
+
+##### storage_object [PumpWoodStorage]:
+Storage object to connect to S3, blog, GCP storage, etc...
+
+##### microservice [PumpWoodMicroService]:
+Microservice used to connect to other microservices in
+pumpwood. This microservice must be authenticated.
+
+##### serializer [PumpWoodSerializer]:
+Serialize to be used to serialize model objects at end-points.
+
+##### list_fields [list(str)]:
+List of fields that will be considered as default to be displayed
+when calling list with default fields.
+
+It is possible to modify function `get_list_fields` to make
+list_fields to adapt to request.
+
+##### foreign_keys [dict]:
+A dictionary to describe relation of this model with other models
+in Pumpwood. This is informational data and does nos verify if
+model actualy exists on Pumpwood. There are two types of
+
+##### gui_retrieve_fieldset [dict]:
+Set a dictionary for rendering frontend, it specify groups of fields to be displayed together. It also permits pass to
+front the ordering of the fields. Dictionary structure:
+
+```python
+# List of the field sets that will be passed to front-end
+# permitting setting them in an order
+gui_retrieve_fieldset = [
+    {
+        # Name of the field set
+        "name": "Main",
+        # Fields that will be returned on this field set,
+        # with permits ordering the fields on front end.
+        "fields": ['name', 'birth_date']
+    }, {
+        # It can be passed many relations such as children_set
+        "name": "Relations",
+        "fields": ['married_to_id', 'children_set']
+    }, {
+        "name": "Jobs",
+        "fields": ['job_set']
+    }
+]
+```
+
+It is possible to modify function `get_gui_retrieve_fieldset` to make list_fields to adapt to request.
+
+##### gui_verbose_field [str]:
+Permit pass to front end how this object should be displayed on
+retrieve view. It is set to substitute using data from the model,
+example:
+```python
+# This will help front end to display title of retrieve page
+# as '5 | Jonh Doe' substituting values os pk and name.
+gui_verbose_field = '{pk} | {name}'
+
+```
+
+It is possible to modify function `get_gui_verbose_field` to make list_fields to adapt to request.
+
+##### gui_readonly [list(str)]:
+Set a list of fields that will be considered as read-only on
+front-end, but can be modified using API. This is useful since
+some data might be only modified thought API such as jobs start
+and end time.
+
+```python
+# This will set birth_date as read-only on field description,
+# although it is still possible to modify it using the API
+gui_readonly = ["birth_date"]
+```
+
+It is possible to modify function `get_gui_readonly` to make list_fields to adapt to request.
+
+#### End-points
 - list (/rest/[model_class]/list/): List objects using query parameters
     passed as dictionary payload, paginate by 50.
 - list_without_pag (/rest/[model_class]/list-without-pag/): Same as list,
@@ -182,7 +280,7 @@ Define pumpwood basic views. They have always the same pattern:
     values associated with dimentions in objects resulting from the query.
 
 Example for defining a PumpWoodFlaskView:
-```
+```python
 from pumpwoodflask_views.views import PumpWoodFlaskView
 from models import Person
 from serializers import PersonSerializer
@@ -204,9 +302,36 @@ class PersonView(PumpWoodFlaskView):
     storage_object = storage_object
     microservice = microservice
     serializer = PersonSerializer
+
+    foreign_keys = {
+        'married_to_id': {
+          'model_class': 'Person', 'many': False,
+          'display_field': 'name'}
+        'children_set': {
+            'model_class': 'Children', 'many': True,
+            'foreign_key': 'parent_id', 'read_only': True},
+        'job_set': {
+            'model_class': 'Job', 'many': True,
+            'foreign_key': 'person_id', 'read_only': False},
+    }
+
+    #######
+    # Gui #
     list_fields = [
         'pk', 'model_class', 'name', 'birthday', 'married_to_id']
-    foreign_keys = {
-        'married_to_id': {'model_class': 'Person', 'many': False}
-    }
+    gui_retrieve_fieldset = [
+        {
+            "name": "Main",
+            "fields": ['name', 'birth_date']
+        }, {
+            "name": "Relations",
+            "fields": ['married_to_id', 'children_set']
+        }, {
+            "name": "Jobs",
+            "fields": ['job_set']
+        }
+    ]
+    gui_verbose_field = '{pk} | {name}'
+    gui_readonly = ["birth_date"]
+    #######
 ```

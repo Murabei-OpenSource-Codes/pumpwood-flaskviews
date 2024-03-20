@@ -1403,7 +1403,6 @@ class PumpWoodFlaskView(View):
         # foreign_key dictonary will pass to front-end information to
         # render.
         for key, item in cls.foreign_keys.items():
-            print(key, item)
             if type(item) != dict:
                 msg = (
                     "foreign_key not correctly defined, check column"
