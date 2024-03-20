@@ -1450,7 +1450,7 @@ class PumpWoodFlaskView(View):
                     "column__verbose": column__verbose,
                     "help_text": key,
                     "help_text__verbose": help_text__verbose,
-                    "type": "backref",
+                    "type": "related_model",
                     "nullable": False,
                     "read_only": read_only,
                     "default": default,
