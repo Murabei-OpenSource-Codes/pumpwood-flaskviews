@@ -1,6 +1,7 @@
 """Functions and classes to help build PumpWood End-Points."""
 import os
 import io
+import copy
 import pandas as pd
 import textwrap
 import inspect
@@ -1331,7 +1332,9 @@ class PumpWoodFlaskView(View):
                 "nullable": x.nullable,
                 "read_only": read_only,
                 "default": None,
-                "unique": x.unique}
+                "unique": x.unique,
+                "extra_info": {}
+            }
 
             if isinstance(x.type, ChoiceType):
                 column_info["type"] = "options"
@@ -1353,31 +1356,6 @@ class PumpWoodFlaskView(View):
                     if cls.relationships.get(rel_class) is None:
                         cls.relationships[rel_class] = relation_col.name
                 column_info["relationships"] = cls.relationships
-
-            foreign_keys = list(x.foreign_keys)
-            micro_fk = cls.foreign_keys.get(x.name)
-            if len(foreign_keys) != 0:
-                # Try to fetch model class using table name
-                fk = foreign_keys[0]
-                fk_table = fk.column.table.fullname
-                fk_class = table_class_map.get(fk_table)
-                column_info["type"] = "foreign_key"
-                column_info["model_class"] = fk_class
-                cls.foreign_keys[x.name] = fk_class
-
-            elif micro_fk is not None:
-                column_info["type"] = "foreign_key"
-                if isinstance(micro_fk, dict):
-                    column_info["model_class"] = micro_fk["model_class"]
-                elif isinstance(micro_fk, str):
-                    column_info["model_class"] = micro_fk
-                else:
-                    msg = (
-                        "foreign_key not correctly defined, check column"
-                        "[{column}] from model [{model}]").format(
-                            column=x.name,
-                            model=cls.model_class.__name__)
-                    raise Exception(msg)
 
             file_field = cls.file_fields.get(x.name)
             if file_field is not None:
@@ -1419,6 +1397,66 @@ class PumpWoodFlaskView(View):
                     column_info["default"] = arg
 
             dict_columns[column_info["column"]] = column_info
+
+        ######################################################
+        # Modifing column types associated with foreign keys #
+        # foreign_key dictonary will pass to front-end information to
+        # render.
+        for key, item in cls.foreign_keys.items():
+            print(key, item)
+            if type(item) != dict:
+                msg = (
+                    "foreign_key not correctly defined, check column"
+                    "[{column}] from model [{model}]").format(
+                        column=key, model=cls.model_class.__name__)
+                raise Exception(msg)
+
+            column_info = dict_columns.get(key)
+            many = item.get('many', False)
+            model_class = item.get('model_class')
+            if model_class is None:
+                msg = (
+                    "foreign_key not correctly defined, check column"
+                    "[{column}] from model [{model}]").format(
+                        column=key, model=cls.model_class.__name__)
+                raise Exception(msg)
+
+            # m:1 relations (the one when table has a fk to other table)
+            # the foreign key dict key must be in table columns
+            if not many and column_info is None:
+                msg = (
+                    "foreign_key not correctly defined, check column"
+                    "[{column}] from model [{model}]").format(
+                        column=key, model=cls.model_class.__name__)
+                raise Exception(msg)
+
+            if not many:
+                column_info["extra_info"] = copy.deepcopy(item)
+                column_info["type"] = "foreign_key"
+                dict_columns[key] = column_info
+            else:
+                tag = translation_tag_template.format(
+                    model_class=model_class, field=column)
+                column__verbose = _.t(
+                    sentence=key, tag=tag + "__related_field")
+                help_text__verbose = _.t(
+                    sentence=key, tag=tag + "__help_text")
+
+                read_only = item.get("read_only", False)
+                default = item.get("default")
+                dict_columns[key] = {
+                    "primary_key": False,
+                    "column": key,
+                    "column__verbose": column__verbose,
+                    "help_text": key,
+                    "help_text__verbose": help_text__verbose,
+                    "type": "backref",
+                    "nullable": False,
+                    "read_only": read_only,
+                    "default": default,
+                    "unique": False,
+                    "extra_info": copy.deepcopy(item)
+                }
 
         ############################################################
         # Stores primary keys as attribute to help other functions #
