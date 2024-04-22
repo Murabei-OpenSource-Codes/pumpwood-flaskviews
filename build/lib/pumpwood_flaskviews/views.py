@@ -198,7 +198,6 @@ class PumpWoodFlaskView(View):
             Returns a serialized object of KongRoute.
         """
         if service_object is not None:
-            print("## Registering route on auth")
             cls.microservice.login()
             model_class_name = cls.model_class.__name__
             suffix = os.getenv('ENDPOINT_SUFFIX', '')
@@ -422,9 +421,11 @@ class PumpWoodFlaskView(View):
             if request.method.lower() == 'post':
                 user_type = request.args.get('user_type', 'api')
                 field = request.args.get('field')
-                return jsonify(self.fill_options_validation(
+
+                resp = self.fill_options_validation(
                     partial_data=data, field=field,
-                    user_type=user_type))
+                    user_type=user_type)
+                return jsonify(resp)
 
         raise exceptions.PumpWoodException(
             'End-point %s for method %s not implemented' % (
@@ -943,7 +944,8 @@ class PumpWoodFlaskView(View):
             if model_object is None:
                 temp_model_class = self.model_class.__mapper__.class_.__name__
 
-                # Convert to integer for error payload
+                ########################################
+                # Convert to integer for error payload #
                 try:
                     pk = int(pk)
                 except Exception:
@@ -954,6 +956,7 @@ class PumpWoodFlaskView(View):
                 raise exceptions.PumpWoodObjectDoesNotExist(
                     message=message, payload={
                         "model_class": temp_model_class, "pk": pk})
+
             to_save_obj = retrieve_serializer.load(
                 data, instance=model_object, session=session)
         else:
@@ -1338,12 +1341,14 @@ class PumpWoodFlaskView(View):
 
             if isinstance(x.type, ChoiceType):
                 column_info["type"] = "options"
-                column_info["in"] = [
-                    {"value": choice[0],
-                     "description": _.t(
-                        sentence=choice[1],
-                        tag=tag + "__choice__" + choice[0])}
-                    for choice in x.type.choices]
+                in_dict = {}
+                for choice in x.type.choices:
+                    in_dict[choice[0]] = {
+                        "description__verbose": _.t(
+                            sentence=choice[1],
+                            tag=tag + "__choice__" + choice[0]),
+                        "description": choice[1]}
+                column_info["in"] = in_dict
 
             if column_info["column"] == "id":
                 column_info["default"] = "#autoincrement#"
@@ -1974,7 +1979,6 @@ def register_pumpwood_view(app, view, service_object: dict):
         No particular raises.
 
     """
-    print("# Creating routes for [%s]" % view.model_class.__name__)
     view.create_route_object(service_object=service_object)
 
     model_class_name = view.model_class.__name__

@@ -24,7 +24,7 @@ os.chdir(os.path.normpath(os.path.join(os.path.abspath(__file__), os.pardir)))
 
 setuptools.setup(
     name='pumpwood-flaskviews',
-    version='0.62',
+    version='0.63',
     include_package_data=True,
     license='BSD-3-Clause License',
     description='Assist creation of flask views in Pumpwood format..',
@@ -38,7 +38,15 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     package_dir={"": "src"},
-    install_requires=requirements,
+    install_requires=[
+        "python-slugify>=6.1.1",
+        "pumpwood-communication>=0.71",
+        "pandas>=1.0",
+        "markupsafe==2.0.1",
+        "SQLAlchemy-Utils==0.37.8",
+        "SQLAlchemy==1.3.19",
+        "GeoAlchemy2==0.9.3",
+    ],
     packages=setuptools.find_packages(where="src"),
     python_requires=">=3.6",
 )
