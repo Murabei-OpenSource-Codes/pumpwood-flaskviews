@@ -448,7 +448,6 @@ class PumpWoodFlaskView(View):
             if request.method.lower() == 'post':
                 user_type = request.args.get('user_type', 'api')
                 field = request.args.get('field')
-
                 resp = self.fill_options_validation(
                     partial_data=data, field=field,
                     user_type=user_type)
