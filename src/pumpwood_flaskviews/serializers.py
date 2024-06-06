@@ -76,9 +76,10 @@ class PumpWoodSerializer(ModelSchema):
             Default fields to be used at list and retrive with
             default_fields=True.
         """
-        list_fields = getattr(self.Meta, 'list_fields')
+        list_fields = getattr(self.Meta, 'list_fields', None)
         if list_fields is None:
             return list(self.fields.keys())
+        return list_fields
 
     def get_foreign_keys(self) -> dict:
         """
