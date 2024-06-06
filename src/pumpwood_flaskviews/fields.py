@@ -117,7 +117,22 @@ class MicroserviceForeignKeyField(fields.Field):
         object_data = self.microservice.list_one(
             model_class=self.model_class, pk=object_pk)
         if self.display_field is not None:
+            if self.display_field not in object_data.keys():
+                msg = (
+                    "Serializer not correctly configured, it is not possible "
+                    "to find display_field[{display_field}] at the object "
+                    "of foreign_key[{foreign_key}] liked to "
+                    "model_class[{model_class}]").format(
+                        display_field=self.display_field,
+                        foreign_key=self.name, model_class=self.model_class)
+                raise exceptions.PumpWoodOtherException(
+                    msg, payload={
+                        "display_field": self.display_field,
+                        "foreign_key": self.name,
+                        "model_class": self.model_class})
             object_data['__display_field__'] = object_data[self.display_field]
+        else:
+            object_data['__display_field__'] = None
         return object_data
 
     def _deserialize(self, value, attr, data, **kwargs):

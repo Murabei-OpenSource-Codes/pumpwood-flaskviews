@@ -302,16 +302,26 @@ class PumpWoodFlaskView(View):
                 return jsonify(self.object_template())
 
             if request.method.lower() == 'get':
-                fields = request.args.get('fields')
-                foreign_key_fields = request.args.get(
-                    'foreign_key_fields', 'false') == 'true'
-                related_fields = request.args.get(
-                    'related_fields', 'false') == 'true'
-                default_fields = request.args.get(
-                    'default_fields', 'false') == 'true'
+                try:
+                    fields = json.loads(
+                        request.args.get('fields', 'null'))
+                    foreign_key_fields = json.loads(
+                        request.args.get('foreign_key_fields', 'false'))
+                    related_fields = json.loads(
+                        request.args.get('related_fields', 'false'))
+                    default_fields = json.loads(
+                        request.args.get('default_fields', 'false'))
+                except Exception:
+                    msg = (
+                        "Error when deserializing url query parameters, "
+                        "check parameters:\n"
+                        "- fields [list]: Must be a list of strings\n"
+                        "- foreign_key_fields [bool]\n"
+                        "- related_fields [bool]\n"
+                        "- default_fields [bool]")
+                    raise exceptions.PumpWoodWrongParameters(msg)
                 return jsonify(self.retrieve(
-                    pk=first_arg,
-                    fields=fields,
+                    pk=first_arg, fields=fields,
                     foreign_key_fields=foreign_key_fields,
                     related_fields=related_fields,
                     default_fields=default_fields))
@@ -886,7 +896,8 @@ class PumpWoodFlaskView(View):
 
     def save(self, data, file_paths: dict = {}):
         """Update object or save new object."""
-        retrieve_serializer = self.serializer(many=False)
+        retrieve_serializer = self.serializer(
+            many=False, )
         retrieve_serializer.context['authorization_token'] = \
             request.headers.get('Authorization', None)
 
