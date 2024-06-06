@@ -27,6 +27,8 @@ from pumpwood_communication.serializers import CompositePkBase64Converter
 from pumpwood_miscellaneous.query import SqlalchemyQueryMisc
 from pumpwood_flaskviews.auth import AuthFactory
 from pumpwood_flaskviews.action import load_action_parameters
+from pumpwood_flaskviews.fields import (
+    MicroserviceForeignKeyField, MicroserviceRelatedField)
 from pumpwood_i8n.singletons import pumpwood_i8n as _
 
 
@@ -125,7 +127,8 @@ class PumpWoodFlaskView(View):
 
     def get_list_fields(self):
         """Return list_fields attribute."""
-        return self.list_fields
+        serializer_obj = self.serializer()
+        return serializer_obj.get_list_fields()
     ########################
 
     def check_microservices(self, microservice: str) -> bool:
@@ -199,6 +202,8 @@ class PumpWoodFlaskView(View):
         """
         if service_object is not None:
             cls.microservice.login()
+            serializer_obj = cls.serializer()
+
             model_class_name = cls.model_class.__name__
             suffix = os.getenv('ENDPOINT_SUFFIX', '')
             model_class_name = suffix + model_class_name
@@ -229,8 +234,9 @@ class PumpWoodFlaskView(View):
                 "icon": cls.icon,
                 "extra_info": {
                     "view_type": cls._view_type,
-                    "foreign_keys": cls.foreign_keys,
-                    "list_fields": cls.list_fields,
+                    "list_fields": serializer_obj.get_list_fields(),
+                    "foreign_keys": serializer_obj.get_foreign_keys(),
+                    "related_fields": serializer_obj.get_related_fields(),
                     "file_fields": cls.file_fields,
                     'gui_retrieve_fieldset': cls.gui_retrieve_fieldset,
                     'gui_verbose_field': cls.gui_verbose_field,
@@ -240,7 +246,7 @@ class PumpWoodFlaskView(View):
             except Exception as e:
                 msg = "Error when registering model [{model}]:\n{msg}".format(
                      model=model_class_name.lower(), msg=str(e))
-                raise e
+                raise exceptions.PumpWoodOtherException(msg)
 
     @staticmethod
     def _allowed_extension(filename, allowed_extensions):
@@ -286,10 +292,9 @@ class PumpWoodFlaskView(View):
             return jsonify(self.list_without_pag(**endpoint_dict))
 
         # Retrieve with list serializer
-        if end_point == 'list-one' and request.method.lower() == 'get':
-            if first_arg is None:
-                raise exceptions.ObjectDoesNotExist('url pk is None')
-            return jsonify(self.list_one(pk=first_arg))
+        if end_point == 'list-one':
+            raise exceptions.PumpWoodNotImplementedError(
+                'List one is deprected')
 
         # retrieve end-points
         if end_point == 'retrieve':
@@ -297,7 +302,19 @@ class PumpWoodFlaskView(View):
                 return jsonify(self.object_template())
 
             if request.method.lower() == 'get':
-                return jsonify(self.retrieve(pk=first_arg))
+                fields = request.args.get('fields')
+                foreign_key_fields = request.args.get(
+                    'foreign_key_fields', 'false') == 'true'
+                related_fields = request.args.get(
+                    'related_fields', 'false') == 'true'
+                default_fields = request.args.get(
+                    'default_fields', 'false') == 'true'
+                return jsonify(self.retrieve(
+                    pk=first_arg,
+                    fields=fields,
+                    foreign_key_fields=foreign_key_fields,
+                    related_fields=related_fields,
+                    default_fields=default_fields))
 
         if end_point == 'retrieve-file':
             if request.method.lower() == 'get':
@@ -440,7 +457,7 @@ class PumpWoodFlaskView(View):
     def list(self, filter_dict: dict = {}, exclude_dict: dict = {},
              order_by: list = [], fields: list = None,
              limit: int = None, default_fields: bool = False,
-             **kwargs) -> list:
+             foreign_key_fields: bool = False, **kwargs) -> list:
         """
         Return query result pagination.
 
@@ -458,6 +475,8 @@ class PumpWoodFlaskView(View):
             limit [int]: Number of objects to be returned.
             default_fields [bool]: Return the fields specified at
                 self.list_fields.
+            foreign_key_fields [bool] = False: If foreign_key fields should
+                be returned. This might take some time...
         Return [list]:
             Return a list of serialized objects using self.serializer and
             filtered by args.
@@ -471,6 +490,8 @@ class PumpWoodFlaskView(View):
             self.db.engine.dispose()
             session.rollback()
         ###############################################
+
+        # Do not display deleted objects
         if hasattr(self.model_class, 'deleted'):
             exclude_dict_keys = exclude_dict.keys()
             any_delete = False
@@ -492,22 +513,16 @@ class PumpWoodFlaskView(View):
         query_result = SqlalchemyQueryMisc.sqlalchemy_kward_query(
             **to_function_dict).limit(list_paginate_limit).all()
 
-        # If field is set always return the requested fields.
-        if fields is not None:
-            temp_fields = fields
-        # default_fields is True, return the ones specified by self.list_fields
-        elif default_fields:
-            temp_fields = self.list_fields
-        # If default_fields not set return all object fields.
-        else:
-            temp_fields = None
-
-        temp_serializer = self.serializer(many=True, only=temp_fields)
-        return temp_serializer.dump(query_result, many=True).data
+        list_serializer = self.serializer(
+            many=True, fields=fields, default_fields=default_fields,
+            foreign_key_fields=foreign_key_fields,
+            related_fields=False)
+        return list_serializer.dump(query_result, many=True).data
 
     def list_without_pag(self, filter_dict: dict = {}, exclude_dict: dict = {},
                          order_by: list = [], fields: list = None,
-                         default_fields: bool = False, **kwargs) -> list:
+                         default_fields: bool = False,
+                         foreign_key_fields: bool = False, **kwargs) -> list:
         """
         Return query without pagination.
 
@@ -523,6 +538,8 @@ class PumpWoodFlaskView(View):
             fields [list]: Fields to be returned.
             default_fields [bool]: Return the fields specified at
                 self.list_fields.
+            foreign_key_fields [bool] = False: If foreign_key fields should
+                be returned. This might take some time...
         Return [list]:
             Return a list of serialized objects using self.serializer and
             filtered by args without pagination all values.
@@ -552,36 +569,35 @@ class PumpWoodFlaskView(View):
         to_function_dict['filter_dict'] = filter_dict
         to_function_dict['exclude_dict'] = exclude_dict
         to_function_dict['order_by'] = order_by
+
         query_result = SqlalchemyQueryMisc.sqlalchemy_kward_query(
             **to_function_dict).all()
 
-        # If field is set always return the requested fields.
-        if fields is not None:
-            temp_fields = fields
-        # default_fields is True, return the ones specified by self.list_fields
-        elif default_fields:
-            temp_fields = self.list_fields
-        # If default_fields not set return all object fields.
-        else:
-            temp_fields = None
+        list_serializer = self.serializer(
+            many=True, fields=fields, default_fields=default_fields,
+            foreign_key_fields=foreign_key_fields,
+            related_fields=False)
+        return list_serializer.dump(query_result, many=True).data
 
-        temp_serializer = self.serializer(many=True, only=temp_fields)
-        return temp_serializer.dump(query_result, many=True).data
-
-    def list_one(self, pk: int, fields: list = None) -> dict:
+    def retrieve(self, pk: Any, fields: list = None,
+                 foreign_key_fields: bool = False,
+                 related_fields: bool = False,
+                 default_fields: bool = False) -> dict:
         """
-        Use List Serializer to return object with pk.
+        Retrieve object with pk.
 
         Args:
             pk [int]: Primary key of the object to be returned.
         Kwargs:
-            fields [list(str)]: List of the fields that should be returned,
-                if None is passed self.list_fields will be used.
-
+            fields [list]: Fields to be returned.
+            default_fields [bool]: Return the fields specified at
+                self.list_fields.
+            foreign_key_fields [bool] = False: If foreign_key fields should
+                be returned. This might take some time...
+            related_fields [bool] = False: If related fields (M2M) should
+                be returned. This might take some time...
         Return [dict]:
-            A dictonary with the serialized values of the object using list
-            fields to restric the returned values. It is possible to specify
-            which values should be returned using fields.
+            A dictionary with the serialized values of the object.
         """
         ###############################################
         # Check if database connection of session is Ok
@@ -608,53 +624,10 @@ class PumpWoodFlaskView(View):
                     "model_class": temp_model_class,
                     "pk": pk})
 
-        temp_fields = fields or self.list_fields
-        if temp_fields is not None:
-            temp_fields = list({"pk", "model_class"}.union(set(temp_fields)))
-
-        temp_serializer = self.serializer(many=False, only=temp_fields)
-        return temp_serializer.dump(model_object).data
-
-    def retrieve(self, pk: Any) -> dict:
-        """
-        Retrieve object with pk.
-
-        Args:
-            pk [int]: Primary key of the object to be returned.
-        Kwargs:
-            composite_pk [dict]: Add extra data to combine with
-                main primary, this is necessary mainly on variable
-                tables that are indexed using many keys.
-        Return [dict]:
-            A dictionary with the serialized values of the object.
-        """
-        ###############################################
-        # Check if database connection of session is Ok
-        session = self.db.session
-        try:
-            session.execute("SELECT 1;")
-        except Exception:
-            self.db.engine.dispose()
-            session.rollback()
-        ###############################################
-
-        model_object = self.pumpwood_pk_get(pk=pk)
-        retrieve_serializer = self.serializer(many=False)
-        if pk is not None and model_object is None:
-            temp_model_class = self.model_class.__mapper__.class_.__name__
-            try:
-                pk = int(pk)
-            except Exception:
-                pass
-
-            message = "Requested object {model_class}[{pk}] not found.".format(
-                model_class=temp_model_class,
-                pk=pk)
-            raise exceptions.PumpWoodObjectDoesNotExist(
-                message=message, payload={
-                    "model_class": temp_model_class,
-                    "pk": pk})
-
+        retrieve_serializer = self.serializer(
+            many=False, fields=fields, default_fields=default_fields,
+            foreign_key_fields=foreign_key_fields,
+            related_fields=related_fields)
         return retrieve_serializer.dump(model_object).data
 
     def retrieve_file(self, pk: int, file_field: str):
@@ -1400,67 +1373,50 @@ class PumpWoodFlaskView(View):
                     column_info["default"] = True
                 else:
                     column_info["default"] = arg
-
             dict_columns[column_info["column"]] = column_info
 
         ######################################################
         # Modifing column types associated with foreign keys #
         # foreign_key dictonary will pass to front-end information to
         # render.
-        for key, item in cls.foreign_keys.items():
-            if type(item) != dict:
+        serializer_obj = cls.serializer()
+        foreign_keys = serializer_obj.get_foreign_keys()
+        for field_name, field_extra_info in foreign_keys.items():
+            tag = translation_tag_template.format(
+                model_class=model_class, field=field_name)
+            field_info = dict_columns.get(field_name)
+            if field_info is None:
                 msg = (
-                    "foreign_key not correctly defined, check column"
-                    "[{column}] from model [{model}]").format(
-                        column=key, model=cls.model_class.__name__)
-                raise Exception(msg)
+                    "foreign_key[{field}] not correctly configured for "
+                    "model_class[{model_class}].")
+                raise exceptions.PumpWoodOtherException(
+                    msg, payload={
+                        "field": field_name, "model_class": model_class})
+            field_info["type"] = "foreign_key"
+            field_info['extra_info'] = field_extra_info
+            dict_columns[field_name] = field_info
 
-            column_info = dict_columns.get(key)
-            many = item.get('many', False)
-            model_class = item.get('model_class')
-            if model_class is None:
-                msg = (
-                    "foreign_key not correctly defined, check column"
-                    "[{column}] from model [{model}]").format(
-                        column=key, model=cls.model_class.__name__)
-                raise Exception(msg)
-
-            # m:1 relations (the one when table has a fk to other table)
-            # the foreign key dict key must be in table columns
-            if not many and column_info is None:
-                msg = (
-                    "foreign_key not correctly defined, check column"
-                    "[{column}] from model [{model}]").format(
-                        column=key, model=cls.model_class.__name__)
-                raise Exception(msg)
-
-            if not many:
-                column_info["extra_info"] = copy.deepcopy(item)
-                column_info["type"] = "foreign_key"
-                dict_columns[key] = column_info
-            else:
-                tag = translation_tag_template.format(
-                    model_class=model_class, field=column)
-                column__verbose = _.t(
-                    sentence=key, tag=tag + "__related_field")
-                help_text__verbose = _.t(
-                    sentence=key, tag=tag + "__help_text")
-
-                read_only = item.get("read_only", False)
-                default = item.get("default")
-                dict_columns[key] = {
-                    "primary_key": False,
-                    "column": key,
-                    "column__verbose": column__verbose,
-                    "help_text": key,
-                    "help_text__verbose": help_text__verbose,
-                    "type": "related_model",
-                    "nullable": False,
-                    "read_only": read_only,
-                    "default": default,
-                    "unique": False,
-                    "extra_info": copy.deepcopy(item)
-                }
+        related_fields = serializer_obj.get_related_fields()
+        for field_name, field_extra_info in related_fields.items():
+            tag = translation_tag_template.format(
+                model_class=model_class, field=field_name)
+            column__verbose = _.t(
+                sentence=field_name, tag=tag + "__related_field")
+            field = serializer_obj.fields[field_name]
+            help_text__verbose = _.t(
+                sentence=field.help_text, tag=tag + "__help_text")
+            dict_columns[field_name] = {
+                "primary_key": False,
+                "column": field_name,
+                "column__verbose": column__verbose,
+                "help_text": field.help_text,
+                "help_text__verbose": help_text__verbose,
+                "type": "related_model",
+                "nullable": False,
+                "read_only": field.read_only,
+                "default": None,
+                "unique": False,
+                "extra_info": field_extra_info}
 
         ############################################################
         # Stores primary keys as attribute to help other functions #
