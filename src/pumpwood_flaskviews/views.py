@@ -1795,8 +1795,8 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
                 '\nData columns: {data_cols}'
             raise exceptions.PumpWoodException(
                 message=template, payload={
-                    "expected": set(self.expected_cols_bulk_save),
-                    "data_cols": pd_data_cols,
+                    "expected": list(set(self.expected_cols_bulk_save)),
+                    "data_cols": list(pd_data_cols),
                 })
 
 
