@@ -1666,7 +1666,7 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
         ###############################################
 
         model_variables = variables or self.model_variables
-        if type(columns) != list:
+        if type(columns) in list:
             raise exceptions.PumpWoodException(
                 'Columns must be a list of elements.')
 
