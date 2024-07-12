@@ -939,7 +939,6 @@ class PumpWoodFlaskView(View):
                 raise exceptions.PumpWoodObjectDoesNotExist(
                     message=message, payload={
                         "model_class": temp_model_class, "pk": pk})
-
             to_save_obj = retrieve_serializer.load(
                 data, instance=model_object, session=session)
         else:
@@ -1210,8 +1209,9 @@ class PumpWoodFlaskView(View):
         rest_action_names = list(actions.keys())
 
         if action_name not in rest_action_names:
-            message = ("There is no method {action} in rest actions "
-                       "for {class_name}").format(
+            message = (
+                "There is no method {action} in rest actions " +
+                "for {class_name}").format(
                 action=action_name,
                 class_name=self.model_class.__mapper__.class_.__name__)
             raise exceptions.PumpWoodException(
@@ -1232,8 +1232,8 @@ class PumpWoodFlaskView(View):
 
             model_object = self.pumpwood_pk_get(pk=pk)
             if model_object is None:
-                message_template = "Requested object {model_class}[{pk}] " + \
-                    "not found."
+                message_template = (
+                    "Requested object {model_class}[{pk}] not found.")
                 temp_model_class = self.model_class.__mapper__.class_.__name__
 
                 try:
@@ -1666,7 +1666,7 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
         ###############################################
 
         model_variables = variables or self.model_variables
-        if type(columns) in list:
+        if type(columns) is not list:
             raise exceptions.PumpWoodException(
                 'Columns must be a list of elements.')
 
