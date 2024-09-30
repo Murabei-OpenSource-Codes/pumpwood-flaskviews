@@ -277,7 +277,15 @@ class PumpWoodFlaskView(View):
                 data = request.get_json()
             else:
                 data = request.form.to_dict()
-                json_data = json.loads(data.pop("__json__", '{}'))
+                json_data_str = data.pop("__json__", '{}')
+                try:
+                    json_data = json.loads(json_data_str)
+                except Exception:
+                    msg = (
+                        "'__json__' key is present at object data, but it " +
+                        "was not possible to load its content.")
+                    raise exceptions.PumpWoodWrongParameters(
+                        message=msg, payload={"__json__": json_data_str})
                 data.update(json_data)
 
         # List end-points
@@ -652,34 +660,56 @@ class PumpWoodFlaskView(View):
         Returns:
             A stream of bytes with da file.
         """
+        temp_model_class = self.model_class.__mapper__.class_.__name__
         if self.storage_object is None:
             raise exceptions.PumpWoodForbidden(
-                "storage_object attribute not set for view, file operations "
-                "are disable")
+                "storage_object attribute not set for " +
+                "model_class [{model_class}] view, file operations "
+                "are disable", payload={
+                    "model_class": temp_model_class})
 
         if file_field not in self.file_fields.keys():
             raise exceptions.PumpWoodForbidden(
-                "file_field must be set on self.file_fields dictionary.")
+                "file_field [{file_field}] must be set on self.file_fields " +
+                "[{file_fields_keys}] dictionary at " +
+                "model_class[{model_class}] view.", payload={
+                    "file_field": file_field,
+                    "file_fields_keys": list(self.file_fields.keys()),
+                    "model_class": temp_model_class})
 
         object_data = self.retrieve(pk=pk)
+        if file_field not in object_data.keys():
+            raise exceptions.PumpWoodOtherException(
+                "file_field [{file_field}] is not an attribute of "
+                "model_class[{model_class}] ",
+                payload={
+                    "file_field": file_field,
+                    "model_class": temp_model_class})
+
         file_path = object_data.get(file_field)
         if file_path is None:
             raise exceptions.PumpWoodObjectDoesNotExist(
-                "field [{}] not found or null at object".format(file_field))
-
+                "file_field [{file_field}] is null at "
+                "model_class[{model_class}]. File field is not set.",
+                payload={
+                    "file_field": file_field,
+                    "model_class": temp_model_class})
         try:
             file_exists = self.storage_object.check_file_exists(file_path)
         except Exception as e:
-            raise exceptions.PumpWoodException(message=str(e))
+            raise exceptions.PumpWoodOtherException(message=str(e))
 
         if not file_exists:
             msg = (
-                "Object not found in storage [{}]").format(file_path)
-            temp_model_class = self.model_class.__mapper__.class_.__name__
+                "Object [{pk}] of model class [{model_class}] with "
+                "file_field [{file_field}] not found in " +
+                "storage path [{file_path}].")
             raise exceptions.PumpWoodObjectDoesNotExist(
                 message=msg, payload={
                     "model_class": temp_model_class,
-                    "pk": object_data["pk"], "file_path": file_path})
+                    "pk": object_data["pk"],
+                    "file_field": file_field,
+                    "file_path": file_path})
 
         file_data = self.storage_object.read_file(file_path)
         file_name = os.path.basename(file_path)
