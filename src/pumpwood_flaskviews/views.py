@@ -389,7 +389,7 @@ class PumpWoodFlaskView(View):
 
         if end_point == "remove-file-field" and \
                 request.method.lower() in ('delete'):
-            file_field = request.args.get('file_field')
+            file_field = request.args.get('file-field')
             if file_field is None:
                 raise exceptions.PumpWoodForbidden(
                     "file_field not set as url parameter")
