@@ -1,6 +1,7 @@
 LICENSE
 MANIFEST.in
 README.md
+pyproject.toml
 setup.py
 src/pumpwood_flaskviews/__init__.py
 src/pumpwood_flaskviews/action.py

@@ -1,8 +1,7 @@
 """Set base serializers for PumpWood systems."""
 import os
-from typing import Any, Union, List
 from marshmallow import validates, fields, ValidationError
-from marshmallow_sqlalchemy import ModelSchema
+from marshmallow_sqlalchemy import SQLAlchemyAutoSchema
 from pumpwood_flaskviews.fields import (
     PrimaryKeyField, MicroserviceForeignKeyField, MicroserviceRelatedField)
 
@@ -14,7 +13,7 @@ def get_model_class(obj):
     return suffix + model_name
 
 
-class PumpWoodSerializer(ModelSchema):
+class PumpWoodSerializer(SQLAlchemyAutoSchema):
     """Default PumpWood Serializer."""
 
     pk = PrimaryKeyField(allow_none=True, required=False, dump_only=True)
@@ -23,16 +22,26 @@ class PumpWoodSerializer(ModelSchema):
     def __init__(self, fields: list = None, foreign_key_fields: bool = False,
                  related_fields: bool = False, many: bool = False,
                  default_fields: bool = False, *args, **kwargs) -> None:
-        """
-        Overide Schema init to restrict dump.
+        """Overide Schema init to restrict dump.
 
         Args:
-            fields [list]: List of the fields that will be returned at the
+            fields (list):
+                List of the fields that will be returned at the
                 serializer.
-            foreign_key_fields [bool]: If foreign key associated fields should
-                be returned at the serializer.
-            related_fields [bool]: If related fields M2M fields should
-                be returned at the serializer.
+            foreign_key_fields (bool):
+                If foreign key associated fields should be returned at the
+                serializer.
+            related_fields (bool):
+                If related fields M2M fields should be returned at the
+                serializer.
+            default_fields (bool):
+                With the default fields should be returned.
+            many (bool):
+                If it will be passed a list of instances or just one.
+            *args:
+                Compatibility with other versions.
+            **kwargs:
+                Compatibility with other versions.
         """
         kwargs["many"] = many
         super().__init__(**kwargs)
@@ -40,8 +49,8 @@ class PumpWoodSerializer(ModelSchema):
         if fields is None and default_fields:
             fields = self.get_list_fields()
 
-        # Remove fields that are not on fields and are fk related to reduce #
-        # requests to other microservices
+        # Remove fields that are not on fields and are FK related to reduce #
+        # requests to other micro services
         to_remove = []
         for key, item in self.fields.items():
             # If field are set then use fields that were sent by user to make
@@ -67,13 +76,13 @@ class PumpWoodSerializer(ModelSchema):
             field_name for field_name in self.fields.keys()
             if field_name not in to_remove]
 
-    def get_list_fields(self):
-        """
-        Get list fields from serializer.
+    def get_list_fields(self) -> list:
+        """Get list fields from serializer.
 
         Args:
             No Args.
-        Return [list]:
+
+        Return:
             Default fields to be used at list and retrive with
             default_fields=True.
         """
@@ -83,14 +92,15 @@ class PumpWoodSerializer(ModelSchema):
         return list_fields
 
     def get_foreign_keys(self) -> dict:
-        """
-        Return a dictonary with all foreign_key fields.
+        """Return a dictonary with all foreign_key fields.
 
         Args:
             No Args.
+
         Kwargs:
             No Kwargs.
-        Return [dict]:
+
+        Return:
             Return a dictionary with field name as keys and relation
             information as value.
         """
@@ -101,15 +111,16 @@ class PumpWoodSerializer(ModelSchema):
                 return_dict[field.source] = field.to_dict()
         return return_dict
 
-    def get_related_fields(self):
-        """
-        Return a dictionary with all related fields (M2M).
+    def get_related_fields(self) -> dict:
+        """Return a dictionary with all related fields (M2M).
 
         Args:
             No Args.
+
         Kwargs:
             No Kwargs.
-        Return [dict]:
+
+        Return:
             Return a dictionary with field name as keys and relation
             information as value.
         """

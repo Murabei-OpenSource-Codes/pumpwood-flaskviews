@@ -1,10 +1,6 @@
 """setup."""
 import os
 import setuptools
-try:  # for pip >= 10
-    from pip._internal.req import parse_requirements
-except ImportError:  # for pip <= 9.0.3
-    from pip.req import parse_requirements
 
 
 with open(os.path.join(os.path.dirname(__file__), 'README.md')) as readme:
@@ -12,12 +8,6 @@ with open(os.path.join(os.path.dirname(__file__), 'README.md')) as readme:
 
 requirements_path = os.path.join(
     os.path.dirname(__file__), 'requirements.txt')
-install_reqs = parse_requirements(requirements_path, session=False)
-try:
-    requirements = [str(ir.req) for ir in install_reqs]
-except Exception:
-    requirements = [str(ir.requirement) for ir in install_reqs]
-
 
 # allow setup.py to be run from any path
 os.chdir(os.path.normpath(os.path.join(os.path.abspath(__file__), os.pardir)))
@@ -41,10 +31,9 @@ setuptools.setup(
     install_requires=[
         "python-slugify>=6.1.1",
         "pumpwood-communication>=0.71",
-        "pandas>=1.0",
-        "markupsafe==2.0.1",
+        "pandas>=2.0",
         "SQLAlchemy-Utils==0.37.8",
-        "SQLAlchemy==1.3.19",
+        "SQLAlchemy==2.0.37",
         "GeoAlchemy2==0.9.3",
     ],
     packages=setuptools.find_packages(where="src"),
