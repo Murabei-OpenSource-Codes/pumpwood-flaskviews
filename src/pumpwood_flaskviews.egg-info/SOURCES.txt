@@ -7,7 +7,10 @@ src/pumpwood_flaskviews/__init__.py
 src/pumpwood_flaskviews/action.py
 src/pumpwood_flaskviews/auth.py
 src/pumpwood_flaskviews/fields.py
+src/pumpwood_flaskviews/json.py
+src/pumpwood_flaskviews/query.py
 src/pumpwood_flaskviews/serializers.py
+src/pumpwood_flaskviews/sqlalchemy.py
 src/pumpwood_flaskviews/views.py
 src/pumpwood_flaskviews.egg-info/PKG-INFO
 src/pumpwood_flaskviews.egg-info/SOURCES.txt
