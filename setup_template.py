@@ -31,7 +31,7 @@ setuptools.setup(
         "MarkupSafe==3.0.2",
         "SQLAlchemy-Utils==0.37.8",
         "SQLAlchemy>=2.0.37",
-        "GeoAlchemy2==0.9.3",
+        "GeoAlchemy2>=0.17.0",
     ],
     packages=setuptools.find_packages(where="src"),
     python_requires=">=3.6",
