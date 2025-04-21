@@ -1,7 +1,7 @@
-GeoAlchemy2>=0.17.0
+python-slugify>=6.1.1
+pumpwood-communication>=2.0
+pandas>=2.2.3
 MarkupSafe==3.0.2
 SQLAlchemy-Utils==0.37.8
 SQLAlchemy>=2.0.37
-pandas>=2.2.3
-pumpwood-communication>=2.0
-python-slugify>=6.1.1
+GeoAlchemy2>=0.17.0

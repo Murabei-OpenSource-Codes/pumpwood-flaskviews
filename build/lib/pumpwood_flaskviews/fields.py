@@ -90,15 +90,22 @@ class MicroserviceForeignKeyField(fields.Field):
     # not values on object
     _CHECK_ATTRIBUTE = False
 
-    def __init__(self, source: str | Dict[str, str],
+    def __init__(self, source: str,
                  microservice: PumpWoodMicroService,
                  model_class: str, display_field: str = None,
+                 complementary_source: Dict[str, str] = dict(),
                  fields: List[str] = None, **kwargs):
         """Class constructor.
 
         Args:
             source (str):
                 Name of the field that contains foreign_key id.
+            complementary_source (Dict[str, str]): = dict()
+                When related field has a composite primary key it is
+                necessary to specify complementary primary key field to
+                fetch the object. The dictonary will set the mapping
+                of the complementary pk field to correspondent related
+                model obj key -> related object field.
             microservice (PumpWoodMicroService):
                 Microservice object that will be used to retrieve
                 foreign_key information.
@@ -114,9 +121,18 @@ class MicroserviceForeignKeyField(fields.Field):
             **kwargs:
                 Compatibylity with other versions and super of method.
         """
+        # Validations
+        if type(source) is not str:
+            msg = "source argument must be a string"
+            raise exceptions.PumpWoodOtherException(message=msg)
+        if type(complementary_source) is not dict:
+            msg = "complementary_source argument must be a dictonary"
+            raise exceptions.PumpWoodOtherException(message=msg)
+
         self.microservice = microservice
         self.model_class = model_class
         self.display_field = display_field
+        self.complementary_source = complementary_source
         self.source = source
         self.fields = fields
 
@@ -126,24 +142,52 @@ class MicroserviceForeignKeyField(fields.Field):
         kwargs['dump_only'] = True
         super(MicroserviceForeignKeyField, self).__init__(**kwargs)
 
+    def get_source_pk_fields(self) -> List[str]:
+        """Return a list of source fields associated with FK.
+
+        If will return the source pk and the complementary_source
+        keys.
+
+        Args:
+            No Args.
+
+        Returns:
+            Return a list of the fields that are considered when retrieving
+            a foreign key.
+        """
+        # Treat when complementary_source is not set
+        complementary_source = self.complementary_source | {}
+        return [self.source] + list(complementary_source.keys())
+
     def _serialize(self, value, attr, obj, **kwargs):
         """Use microservice to get object at serialization."""
         self.microservice.login()
 
-        # When source is a list it is considered that the related model
-        # has a composit primary key
-        object_pk = CompositePkBase64Converter.dump(
-            obj=obj, primary_keys=self.source)
+        object_pk = None
+        if not self.complementary_source:
+            object_pk = getattr(obj, self.source)
+        else:
+            primary_keys = {self.source: 'id'}
+            primary_keys.update(self.complementary_source)
+            object_pk = CompositePkBase64Converter.dump(
+                obj=obj, primary_keys=primary_keys)
 
         # Return an empty object if object pk is None, this will help
         # the front-end when always treating forenging key as a
         # dictonary/object field.
-        if object_pk:
+        if object_pk is None:
             return {"model_class": self.model_class}
 
-        object_data = self.microservice.list_one(
-            model_class=self.model_class, pk=object_pk,
-            fields=self.fields)
+        try:
+            print('self.microservice.list_one object_pk:', object_pk)
+            object_data = self.microservice.list_one(
+                model_class=self.model_class, pk=object_pk,
+                fields=self.fields)
+        except exceptions.PumpWoodObjectDoesNotExist:
+            return {
+                "model_class": self.model_class,
+                "__error__": 'PumpWoodObjectDoesNotExist'}
+
         if self.display_field is not None:
             if self.display_field not in object_data.keys():
                 msg = (
@@ -169,10 +213,11 @@ class MicroserviceForeignKeyField(fields.Field):
 
     def to_dict(self):
         """Return a dict with values to be used on options end-point."""
+        source_keys = self.get_source_pk_fields()
         return {
             'model_class': self.model_class, 'many': False,
             'display_field': self.display_field,
-            'object_field': self.name}
+            'object_field': self.name, 'source_keys': source_keys}
 
 
 class MicroserviceRelatedField(fields.Field):
