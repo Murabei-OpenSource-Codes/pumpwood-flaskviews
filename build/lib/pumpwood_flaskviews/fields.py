@@ -1,6 +1,6 @@
 """Pumpwood Marshmellow fields and aux functions."""
 import importlib
-from typing import List, Dict
+from typing import List, Dict, Any
 from geoalchemy2.shape import from_shape, to_shape
 from shapely import geometry
 from marshmallow import fields
@@ -179,7 +179,6 @@ class MicroserviceForeignKeyField(fields.Field):
             return {"model_class": self.model_class}
 
         try:
-            print('self.microservice.list_one object_pk:', object_pk)
             object_data = self.microservice.list_one(
                 model_class=self.model_class, pk=object_pk,
                 fields=self.fields)
@@ -230,7 +229,9 @@ class MicroserviceRelatedField(fields.Field):
 
     def __init__(self, microservice: PumpWoodMicroService,
                  model_class: str, foreign_key: str,
+                 complementary_foreign_key: Dict[str, str] = dict(),
                  pk_field: str = 'id', order_by: List[str] = ["id"],
+                 exclude_dict: Dict[str, str] = dict(),
                  help_text: str = "", read_only: bool = False,
                  fields: List[str] = None, **kwargs):
         """Class constructor.
@@ -244,6 +245,9 @@ class MicroserviceRelatedField(fields.Field):
             foreign_key (str):
                 Foreign Key field that is a foreign key id to origin
                 model class.
+            complementary_foreign_key (Dict[str, str]):
+                Complementary primary key fields that will be used on query
+                to reduce query time.
             pk_field (str):
                 Field of the origin model class that will be used to filter
                 related models at foreign_key.
@@ -252,6 +256,9 @@ class MicroserviceRelatedField(fields.Field):
                 when returning the object.
             order_by (List[str]):
                 List of strings that will be used to order query results.
+            exclude_dict (Dict[str, str]):
+                Default exclude_dict to be applied at list end-point to
+                retrieve related objects.
             help_text (str):
                 Help text associated with related model. This will be
                 returned at fill_options data.
@@ -264,11 +271,27 @@ class MicroserviceRelatedField(fields.Field):
             **kwargs (dict):
                 Dictonary if extra parameters to be used on function.
         """
+        # Validation
+        if type(complementary_foreign_key) is not dict:
+            msg = "complementary_foreign_key type must be a dict"
+            raise exceptions.PumpWoodOtherException(message=msg)
+        if type(foreign_key) is not str:
+            msg = "foreign_key type must be a str"
+            raise exceptions.PumpWoodOtherException(message=msg)
+        if type(order_by) is not list:
+            msg = "order_by type must be a list"
+            raise exceptions.PumpWoodOtherException(message=msg)
+        if type(exclude_dict) is not dict:
+            msg = "exclude_dict type must be a dict"
+            raise exceptions.PumpWoodOtherException(message=msg)
+
         self.microservice = microservice
         self.model_class = model_class
         self.foreign_key = foreign_key
+        self.complementary_foreign_key = complementary_foreign_key
         self.pk_field = pk_field
         self.order_by = order_by
+        self.exclude_dict = exclude_dict
         self.fields = fields
 
         # Informational data for options end-point
@@ -283,15 +306,59 @@ class MicroserviceRelatedField(fields.Field):
         # done using id
         super(MicroserviceRelatedField, self).__init__(**kwargs)
 
+    def _get_list_arg_filter_dict(self, obj) -> Dict[str, Any]:
+        """Return the filter_dict that will be used at list end-point.
+
+        Returns:
+            Return a dictionary that will be used on filter_dict at
+            list end-point.
+        """
+        pk_field = getattr(obj, self.pk_field)
+        filter_dict = {self.foreign_key: pk_field}
+        for key, item in self.complementary_foreign_key.items():
+            filter_dict[item] = getattr(obj, key)
+        return filter_dict
+
+    def _get_list_arg_exlude_dict(self, obj) -> Dict[str, Any]:
+        """Return the exclude dict that will be used at list end-point.
+
+        Returns:
+            Return a dictionary that will be used as exclude_dict at
+            list end-point.
+        """
+        return self.exclude_dict
+
+    def _get_list_arg_order_by(self, obj) -> List[str]:
+        """Return order_by list to be used at list end-point.
+
+        Returns:
+            Return a list that will be used as order_by at
+            list end-point.
+        """
+        return self.order_by
+
+    def _get_list_arg_fields(self, obj) -> List[str]:
+        """Return fields list to be used at list end-point.
+
+        Returns:
+            Return a list that will be used as fields at
+            list end-point.
+        """
+        return self.fields
+
     def _serialize(self, value, attr, obj, **kwargs):
         """Use microservice to get object at serialization."""
         self.microservice.login()
-        pk_field = getattr(obj, self.pk_field)
+        filter_dict = self._get_list_arg_filter_dict(obj)
+        exlude_dict = self._get_list_arg_exlude_dict(obj)
+        order_by = self._get_list_arg_order_by(obj)
+        fields = self._get_list_arg_fields(obj)
+
         return self.microservice.list_without_pag(
             model_class=self.model_class,
-            filter_dict={self.foreign_key: pk_field},
-            order_by=self.order_by, default_fields=True,
-            fields=self.fields)
+            filter_dict=filter_dict, exlude_dict=exlude_dict,
+            order_by=order_by, fields=fields,
+            default_fields=True)
 
     def _deserialize(self, value, attr, data, **kwargs):
         raise NotImplementedError(
@@ -301,5 +368,8 @@ class MicroserviceRelatedField(fields.Field):
         """Return a dict with values to be used on options end-point."""
         return {
             'model_class': self.model_class, 'many': True,
-            'pk_field': self.pk_field, 'order_by': self.order_by,
-            'fields': self.fields, 'foreign_key': self.foreign_key}
+            'pk_field': self.pk_field,
+            'foreign_key': self.foreign_key,
+            'complementary_foreign_key': self.complementary_foreign_key,
+            'order_by': self.order_by,
+            'fields': self.fields}
