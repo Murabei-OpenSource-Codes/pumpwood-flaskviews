@@ -1,5 +1,6 @@
+"""Pumpwood Marshmellow fields and aux functions."""
 import importlib
-from typing import List
+from typing import List, Dict
 from geoalchemy2.shape import from_shape, to_shape
 from shapely import geometry
 from marshmallow import fields
@@ -89,7 +90,8 @@ class MicroserviceForeignKeyField(fields.Field):
     # not values on object
     _CHECK_ATTRIBUTE = False
 
-    def __init__(self, source: str, microservice: PumpWoodMicroService,
+    def __init__(self, source: str | Dict[str, str],
+                 microservice: PumpWoodMicroService,
                  model_class: str, display_field: str = None,
                  fields: List[str] = None, **kwargs):
         """Class constructor.
@@ -108,6 +110,7 @@ class MicroserviceForeignKeyField(fields.Field):
             fields (List[str]):
                 Set the fileds that will be returned at the foreign key
                 object.
+            extra_pk_fields
             **kwargs:
                 Compatibylity with other versions and super of method.
         """
@@ -126,10 +129,16 @@ class MicroserviceForeignKeyField(fields.Field):
     def _serialize(self, value, attr, obj, **kwargs):
         """Use microservice to get object at serialization."""
         self.microservice.login()
-        object_pk = getattr(obj, self.source)
 
-        # Return an empty object if object pk is None
-        if object_pk is None:
+        # When source is a list it is considered that the related model
+        # has a composit primary key
+        object_pk = CompositePkBase64Converter.dump(
+            obj=obj, primary_keys=self.source)
+
+        # Return an empty object if object pk is None, this will help
+        # the front-end when always treating forenging key as a
+        # dictonary/object field.
+        if object_pk:
             return {"model_class": self.model_class}
 
         object_data = self.microservice.list_one(
@@ -167,8 +176,7 @@ class MicroserviceForeignKeyField(fields.Field):
 
 
 class MicroserviceRelatedField(fields.Field):
-    """
-    Serializer field for related objects using microservice.
+    """Serializer field for related objects using microservice.
 
     It is an informational serializer to related models.
     """
@@ -176,37 +184,40 @@ class MicroserviceRelatedField(fields.Field):
     _CHECK_ATTRIBUTE = False
 
     def __init__(self, microservice: PumpWoodMicroService,
-                 model_class: str,  foreign_key: str,
+                 model_class: str, foreign_key: str,
                  pk_field: str = 'id', order_by: List[str] = ["id"],
                  help_text: str = "", read_only: bool = False,
                  fields: List[str] = None, **kwargs):
-        """
-        Class constructor.
+        """Class constructor.
 
         Args:
-            source
-                microservice [PumpWoodMicroService]:
-                    Microservice object that will be used to retrieve
-                    foreign_key information.
-                model_class [str]:
-                    Model class associated with Foreign Key.
-                foreign_key [str]:
-                    Foreign Key field that is a foreign key id to origin
-                    model class.
-                pk_field [str]:
-                    Field of the origin model class that will be used to filter
-                    related models at foreign_key.
-                display_field  [str]:
-                    Display field that is set as __display_field__ value
-                    when returning the object.
-                order_by [List[str]]:
-                    List of strings that will be used to order query results.
-                help_text [str]:
-                    Help text associated with related model. This will be
-                    returned at fill_options data.
-                fields [List[str]]:
-                    Set the fileds that will be returned at the foreign key
-                    object.
+            microservice (PumpWoodMicroService):
+                Microservice object that will be used to retrieve
+                foreign_key information.
+            model_class (str):
+                Model class associated with Foreign Key.
+            foreign_key (str):
+                Foreign Key field that is a foreign key id to origin
+                model class.
+            pk_field (str):
+                Field of the origin model class that will be used to filter
+                related models at foreign_key.
+            display_field (str):
+                Display field that is set as __display_field__ value
+                when returning the object.
+            order_by (List[str]):
+                List of strings that will be used to order query results.
+            help_text (str):
+                Help text associated with related model. This will be
+                returned at fill_options data.
+            fields (List[str]):
+                Set the fileds that will be returned at the foreign key
+                object.
+            read_only (bool):
+                Not implemented yet. It will set if it is possible to create
+                related objects using this end-point.
+            **kwargs (dict):
+                Dictonary if extra parameters to be used on function.
         """
         self.microservice = microservice
         self.model_class = model_class

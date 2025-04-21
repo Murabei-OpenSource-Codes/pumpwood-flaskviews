@@ -1,5 +1,6 @@
+"""Pumpwood Marshmellow fields and aux functions."""
 import importlib
-from typing import List
+from typing import List, Dict
 from geoalchemy2.shape import from_shape, to_shape
 from shapely import geometry
 from marshmallow import fields
@@ -89,7 +90,8 @@ class MicroserviceForeignKeyField(fields.Field):
     # not values on object
     _CHECK_ATTRIBUTE = False
 
-    def __init__(self, source: str, microservice: PumpWoodMicroService,
+    def __init__(self, source: str | Dict[str, str],
+                 microservice: PumpWoodMicroService,
                  model_class: str, display_field: str = None,
                  fields: List[str] = None, **kwargs):
         """Class constructor.
@@ -108,6 +110,7 @@ class MicroserviceForeignKeyField(fields.Field):
             fields (List[str]):
                 Set the fileds that will be returned at the foreign key
                 object.
+            extra_pk_fields
             **kwargs:
                 Compatibylity with other versions and super of method.
         """
@@ -126,10 +129,16 @@ class MicroserviceForeignKeyField(fields.Field):
     def _serialize(self, value, attr, obj, **kwargs):
         """Use microservice to get object at serialization."""
         self.microservice.login()
-        object_pk = getattr(obj, self.source)
 
-        # Return an empty object if object pk is None
-        if object_pk is None:
+        # When source is a list it is considered that the related model
+        # has a composit primary key
+        object_pk = CompositePkBase64Converter.dump(
+            obj=obj, primary_keys=self.source)
+
+        # Return an empty object if object pk is None, this will help
+        # the front-end when always treating forenging key as a
+        # dictonary/object field.
+        if object_pk:
             return {"model_class": self.model_class}
 
         object_data = self.microservice.list_one(
