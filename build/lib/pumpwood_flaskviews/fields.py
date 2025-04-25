@@ -181,7 +181,6 @@ class MicroserviceForeignKeyField(fields.Field):
                 model_class=self.model_class, pk=object_pk,
                 fields=fields)
         input_string_hash = hash(key_string)
-        print("input_string_hash:", input_string_hash)
         cache_dict = getattr(request, '_cache_microservice_fk_field', {})
         cached_data = cache_dict.get(input_string_hash)
         if cached_data is not None:
