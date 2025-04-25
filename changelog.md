@@ -20,8 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.2.1] - 2025-03-21
 
 ### Added
-- `MicroserviceForeignKeyField` caching results at request level, reducing
-  number of request for same objects, increasing response time.
+- Cache data from MicroserviceRelatedField at request reducing request time
+  mainlly for list end-points.
 
 ### Changed
 - No changes.
