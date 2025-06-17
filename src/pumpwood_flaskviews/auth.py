@@ -12,8 +12,7 @@ from pumpwood_communication import exceptions
 
 
 class AuthFactory:
-    """
-    Create an auth decorator using the server_url provided.
+    """Create an auth decorator using the server_url provided.
 
     Args:
         server_url (str): Full path to auth server url, including conection
@@ -78,8 +77,7 @@ class AuthFactory:
     def check_authorization(cls, request_method: str = None, path: str = None,
                             end_point: str = None, first_arg: str = None,
                             second_arg: str = None, payload_text: str = None):
-        """
-        Check if user is authenticated using Auth API.
+        """Check if user is authenticated using Auth API.
 
         Raises:
             PumpWoodUnauthorized (Token autorization failed)
@@ -107,7 +105,8 @@ class AuthFactory:
         if ingress_request is not None:
             auth_headers['X-PUMPWOOD-Ingress-Request'] = ingress_request
         if request_method is None:
-            resp = requests.get(cls.auth_check_url, headers=auth_headers)
+            resp = requests.get(
+                cls.auth_check_url, headers=auth_headers, timeout=60)
         else:
             resp = requests.post(
                 cls.auth_check_url, json={
@@ -116,7 +115,7 @@ class AuthFactory:
                     'first_arg': first_arg, 'second_arg': second_arg,
                     'payload': payload_text[:300],
                     'ingress_request': ingress_request},
-                headers=auth_headers)
+                headers=auth_headers, timeout=60)
         # Raise PumpWoodUnauthorized is token is not valid
         if resp.status_code != 200:
             raise exceptions.PumpWoodUnauthorized(
@@ -126,8 +125,7 @@ class AuthFactory:
 
     @classmethod
     def retrieve_authenticated_user(cls):
-        """
-        retrieve user data using Auth API.
+        """Retrieve user data using Auth API.
 
         Args:
             token (str): Token used in authentication.
@@ -149,7 +147,7 @@ class AuthFactory:
             '/rest/registration/retrieveauthenticateduser/')
 
         headers = {'Authorization': token}
-        user_response = requests.get(url, headers=headers)
+        user_response = requests.get(url, headers=headers, timeout=60)
         if user_response.status_code != 200:
             raise exceptions.PumpWoodUnauthorized('Token autorization failed')
 
