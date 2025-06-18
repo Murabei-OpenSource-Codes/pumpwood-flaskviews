@@ -4,11 +4,8 @@ import textwrap
 import pandas as pd
 import typing
 from datetime import date, datetime
-from typing import Callable, Dict, List, Optional, cast
-
-from pumpwood_communication.exceptions import (
-    PumpWoodUnauthorized, PumpWoodException, PumpWoodActionArgsException,
-    PumpWoodObjectSavingException, PumpWoodObjectDoesNotExist)
+from typing import Callable, cast
+from pumpwood_communication.exceptions import PumpWoodActionArgsException
 
 
 class Action:
@@ -24,7 +21,7 @@ class Action:
                     resp["type"] = "Any"
                 else:
                     resp["type"] = type(param.default).__name__
-            elif type(param.annotation) == str:
+            elif isinstance(param.annotation, str):
                 resp["type"] = param.annotation
             elif isinstance(param.annotation, type):
                 resp["type"] = param.annotation.__name__
@@ -34,7 +31,7 @@ class Action:
                 resp["in"] = [
                     {"value": x, "description": x}
                     for x in typing_args]
-            elif typing.get_origin(param.annotation) == list:
+            elif isinstance(typing.get_origin(param.annotation), list):
                 resp["many"] = True
                 list_args = typing.get_args(param.annotation)
                 if len(list_args) == 0:
@@ -51,7 +48,7 @@ class Action:
             resp = {"many": False}
             if return_annotation == inspect.Parameter.empty:
                 resp["type"] = "Any"
-            elif type(return_annotation) == str:
+            elif isinstance((return_annotation), str):
                 resp["type"] = return_annotation
             elif isinstance(return_annotation, type):
                 resp["type"] = return_annotation.__name__
@@ -61,7 +58,7 @@ class Action:
                 resp["in"] = [
                     {"value": x, "description": x}
                     for x in typing_args]
-            elif typing.get_origin(return_annotation) == list:
+            elif isinstance(typing.get_origin(return_annotation), list):
                 resp["many"] = True
                 list_args = typing.get_args(return_annotation)
                 if len(list_args) == 0:
@@ -118,13 +115,13 @@ class Action:
         return result
 
 
-def action(info=""):
-    """
-    Define decorator that will convert the function into a rest action.
+def action(info: str = ""):
+    """Define decorator that will convert the function into a rest action.
 
     Args:
-        info: Just an information about the decorated function that will be
-        returned in GET /rest/<model_class>/actions/.
+        info (str):
+            Just an information about the decorated function that will be
+            returned in GET /rest/<model_class>/actions/.
 
     Returns:
         func: Action decorator.
@@ -210,5 +207,4 @@ def load_action_parameters(func: Callable, parameters: dict):
         raise PumpWoodActionArgsException(
             status_code=400, message=error_msg, payload={
                 "arg_errors": errors})
-
     return return_parameters
