@@ -4,7 +4,6 @@ auth.py.
 
 Gatter functions used in authentication of the API.
 """
-
 import urllib.parse
 import requests
 from flask import request as flask_request
