@@ -1970,9 +1970,6 @@ def register_pumpwood_view(app, view, service_object: dict):
     # SQLAlchemy errors
     @app.errorhandler(sqlalchemy.exc.SQLAlchemyError)
     def handle_sqlalchemy_programmingerror_errors(error):
-        print(
-            "app.config['SQLALCHEMY_DATABASE_URI']:",
-            app.config['SQLALCHEMY_DATABASE_URI'])
         error_dict = TreatSQLAlchemyError.treat(
             error=error, connection_url=app.config['SQLALCHEMY_DATABASE_URI'])
         ErrorClass = exceptions.exceptions_dict.get(error_dict['type']) # NOQA
