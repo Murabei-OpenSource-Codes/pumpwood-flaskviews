@@ -28,6 +28,8 @@ from pumpwood_flaskviews.query import SqlalchemyQueryMisc
 from pumpwood_flaskviews.auth import AuthFactory
 from pumpwood_flaskviews.action import load_action_parameters
 from pumpwood_i8n.singletons import pumpwood_i8n as _
+from pumpwood_database_error import (
+    TreatPsycopg2Error, TreatSQLAlchemyError)
 
 
 class PumpWoodFlaskView(View):
@@ -872,15 +874,9 @@ class PumpWoodFlaskView(View):
             try:
                 session.delete(model_object)
                 session.commit()
-            except sqlalchemy.exc.IntegrityError as e:
-                session.rollback()
-                raise exceptions.PumpWoodIntegrityError(message=str(e))
-            except psycopg2.errors.IntegrityError as e:
-                session.rollback()
-                raise exceptions.PumpWoodIntegrityError(message=str(e))
             except Exception as e:
                 session.rollback()
-                raise exceptions.PumpWoodObjectDeleteException(message=str(e))
+                raise e
 
         available_microservices = self.get_available_microservices()
         pumpwood_etl_ok = 'pumpwood-etl-app' in available_microservices
@@ -919,7 +915,8 @@ class PumpWoodFlaskView(View):
             query_result.delete(synchronize_session='fetch')
             session.commit()
         except Exception as e:
-            raise exceptions.PumpWoodObjectDeleteException(message=str(e))
+            session.rollback()
+            raise e
         return True
 
     def save(self, data, file_paths: dict = {}):
@@ -954,15 +951,9 @@ class PumpWoodFlaskView(View):
             # persist on database.
             session.add(to_save_obj)
             session.flush()
-        except sqlalchemy.exc.IntegrityError as e:
-            session.rollback()
-            raise exceptions.PumpWoodIntegrityError(message=str(e))
-        except psycopg2.errors.IntegrityError as e:
-            session.rollback()
-            raise exceptions.PumpWoodIntegrityError(message=str(e))
         except Exception as e:
             session.rollback()
-            raise exceptions.PumpWoodException(message=str(e))
+            raise e
 
         # Set file names with file_paths dict which is not exposed to API
         # this is only used by save_file_streaming to set file name
@@ -1069,15 +1060,9 @@ class PumpWoodFlaskView(View):
         # information if present.
         try:
             session.commit()
-        except sqlalchemy.exc.IntegrityError as e:
-            session.rollback()
-            raise exceptions.PumpWoodIntegrityError(message=str(e))
-        except psycopg2.errors.IntegrityError as e:
-            session.rollback()
-            raise exceptions.PumpWoodIntegrityError(message=str(e))
         except Exception as e:
             session.rollback()
-            raise exceptions.PumpWoodException(message=str(e))
+            raise e
 
         # Serialize object to return
         result = retrieve_serializer.dump(to_save_obj)
@@ -1808,15 +1793,9 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
             try:
                 session.bulk_save_objects(objects_to_load)
                 session.commit()
-            except sqlalchemy.exc.IntegrityError as e:
-                session.rollback()
-                raise exceptions.PumpWoodIntegrityError(message=str(e))
-            except psycopg2.errors.IntegrityError as e:
-                session.rollback()
-                raise exceptions.PumpWoodIntegrityError(message=str(e))
             except Exception as e:
                 session.rollback()
-                raise exceptions.PumpWoodException(message=str(e))
+                raise e
 
             return {'saved_count': len(objects_to_load)}
         else:
@@ -1989,66 +1968,34 @@ def register_pumpwood_view(app, view, service_object: dict):
         return response
 
     # SQLAlchemy errors
-    @app.errorhandler(sqlalchemy.exc.ProgrammingError)
+    @app.errorhandler(sqlalchemy.exc.SQLAlchemyError)
     def handle_sqlalchemy_programmingerror_errors(error):
-        pump_exc = exceptions.PumpWoodException(message=str(error))
-        response = jsonify(pump_exc.to_dict())
-        response.status_code = pump_exc.status_code
-        return response
+        print(
+            "app.config['SQLALCHEMY_DATABASE_URI']:",
+            app.config['SQLALCHEMY_DATABASE_URI'])
+        error_dict = TreatSQLAlchemyError.treat(
+            error=error, connection_url=app.config['SQLALCHEMY_DATABASE_URI'])
+        ErrorClass = exceptions.exceptions_dict.get(error_dict['type']) # NOQA
+        if ErrorClass is None:
+            msg = (
+                "Error class returned by 'TreatSQLAlchemyError' [{type}] "
+                "is not implemented on PumpwoodCommunication package.")\
+                .format(type=error_dict['type'])
+            raise NotImplementedError(msg)
 
-    @app.errorhandler(sqlalchemy.exc.IntegrityError)
-    def handle_sqlalchemy_invalidrequest_error(error):
-        pump_exc = exceptions.PumpWoodDatabaseError(message=str(error))
-        response = jsonify(pump_exc.to_dict())
-        response.status_code = pump_exc.status_code
-        return response
-
-    @app.errorhandler(sqlalchemy.exc.InvalidRequestError)
-    def handle_sqlalchemy_invalidrequesterror_error(error):
-        pump_exc = exceptions.PumpWoodQueryException(message=str(error))
+        pump_exc = ErrorClass(
+            message=error_dict['message'], payload=error_dict['payload'])
         response = jsonify(pump_exc.to_dict())
         response.status_code = pump_exc.status_code
         return response
 
     # psycopg2 error handlers
-    @app.errorhandler(psycopg2.errors.DatabaseError)
-    def handle_psycopg2_databaseerror(error):
-        pump_exc = exceptions.PumpWoodDatabaseError(message=str(error))
-        response = jsonify(pump_exc.to_dict())
-        response.status_code = pump_exc.status_code
-        return response
-
-    @app.errorhandler(psycopg2.errors.OperationalError)
-    def handle_psycopg2_operationalerror(error):
-        pump_exc = exceptions.PumpWoodDatabaseError(message=str(error))
-        response = jsonify(pump_exc.to_dict())
-        response.status_code = pump_exc.status_code
-        return response
-
-    @app.errorhandler(psycopg2.errors.NotSupportedError)
-    def handle_psycopg2_notsupportederror(error):
-        pump_exc = exceptions.PumpWoodDatabaseError(message=str(error))
-        response = jsonify(pump_exc.to_dict())
-        response.status_code = pump_exc.status_code
-        return response
-
-    @app.errorhandler(psycopg2.errors.ProgrammingError)
-    def handle_psycopg2_programmingerror(error):
-        pump_exc = exceptions.PumpWoodDatabaseError(message=str(error))
-        response = jsonify(pump_exc.to_dict())
-        response.status_code = pump_exc.status_code
-        return response
-
-    @app.errorhandler(psycopg2.errors.DataError)
-    def handle_psycopg2_dataerror(error):
-        pump_exc = exceptions.PumpWoodDatabaseError(message=str(error))
-        response = jsonify(pump_exc.to_dict())
-        response.status_code = pump_exc.status_code
-        return response
-
-    @app.errorhandler(psycopg2.errors.IntegrityError)
-    def handle_psycopg2_integrityerror(error):
-        pump_exc = exceptions.PumpWoodDatabaseError(message=str(error))
+    @app.errorhandler(psycopg2.Error)
+    def handle_psycopg2_error(error):
+        error_dict = TreatPsycopg2Error.treat(error=error)
+        ErrorClass = exceptions.exceptions_dict.get(error_dict['type']) # NOQA
+        pump_exc = ErrorClass(
+            message=error_dict['message'], payload=error_dict['payload'])
         response = jsonify(pump_exc.to_dict())
         response.status_code = pump_exc.status_code
         return response
