@@ -59,10 +59,16 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
         # requests to other micro services
         to_remove = []
         for key, item in self._declared_fields.items():
+            # Keep all fields declared on fields, independent if it is
+            # fk or related
+            if only is not None:
+                if key in only:
+                    continue
+
             # Keep related only if user ask to keep them
             is_related_micro = isinstance(
                 item, MicroserviceRelatedField)
-            if is_related_micro and (many or not related_fields):
+            if is_related_micro and not related_fields:
                 to_remove.append(key)
                 continue
 
