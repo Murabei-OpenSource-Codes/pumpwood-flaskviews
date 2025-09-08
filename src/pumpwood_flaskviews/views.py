@@ -397,7 +397,20 @@ class PumpWoodFlaskView(View):
 
         # Save end-points
         if end_point == 'save' and request.method.lower() in ('post', 'put'):
-            return jsonify(self.save(data=data))
+            fields = json.loads(
+                request.args.get('fields', 'null'))
+            foreign_key_fields = json.loads(
+                request.args.get('foreign_key_fields', 'false'))
+            related_fields = json.loads(
+                request.args.get('related_fields', 'false'))
+            default_fields = json.loads(
+                request.args.get('default_fields', 'false'))
+            save_data = self.save(
+                data=data, fields=fields,
+                foreign_key_fields=foreign_key_fields,
+                related_fields=related_fields,
+                default_fields=default_fields)
+            return jsonify(save_data)
 
         if end_point == "save-file-streaming" and \
                 request.method.lower() in ('post', 'put'):
@@ -406,13 +419,24 @@ class PumpWoodFlaskView(View):
                     "Save file stream endpoint have a pk")
 
             # Get URL parameters for the end-point
+            fields = json.loads(
+                request.args.get('fields', 'null'))
+            foreign_key_fields = json.loads(
+                request.args.get('foreign_key_fields', 'false'))
+            related_fields = json.loads(
+                request.args.get('related_fields', 'false'))
+            default_fields = json.loads(
+                request.args.get('default_fields', 'false'))
             file_field = request.args.get('file_field')
             if file_field is None:
                 raise exceptions.PumpWoodForbidden(
                     "file_field not set as url parameter")
             file_name = request.args.get('file_name')
-            return jsonify(self.save_file_streaming(
-                pk=first_arg, file_field=file_field, file_name=file_name))
+            save_streaming_data = self.save_file_streaming(
+                pk=first_arg, file_field=file_field, file_name=file_name,
+                fields=fields, foreign_key_fields=foreign_key_fields,
+                related_fields=related_fields, default_fields=default_fields)
+            return jsonify(save_streaming_data)
 
         if end_point == "remove-file-field" and \
                 request.method.lower() in ('delete'):
@@ -919,9 +943,34 @@ class PumpWoodFlaskView(View):
             raise e
         return True
 
-    def save(self, data, file_paths: dict = {}):
-        """Update object or save new object."""
-        retrieve_serializer = self.serializer(many=False)
+    def save(self, data: dict, file_paths: dict = {},
+             foreign_key_fields: bool = False, related_fields: bool = False,
+             default_fields: bool = False, fields: list = None) -> dict:
+        """Update object or save new object.
+
+        Args:
+            data (dict):
+                Data used to save information on Pumpwood.
+            file_paths (dict):
+                Used when saving files with streaming, it is not
+                exposed to save API. If will set the file path directly on
+                the object.
+            fields (list):
+                Set fields to be returned at serializer.
+            foreign_key_fields (bool):
+                If foreign fields should be returned at the object serializer.
+            related_fields (bool):
+                If related fields should be returned at the object serializer.
+            default_fields (bool):
+                If default fields should be returned at the object serializer.
+
+        Returns:
+            Returns a dictonary with serialized object.
+        """
+        retrieve_serializer = self.serializer(
+            many=False, fields=fields, default_fields=default_fields,
+            foreign_key_fields=foreign_key_fields,
+            related_fields=related_fields)
         retrieve_serializer.context['authorization_token'] = \
             request.headers.get('Authorization', None)
 
@@ -1091,7 +1140,11 @@ class PumpWoodFlaskView(View):
         return result
 
     def save_file_streaming(self, pk: int | str, file_field: str,
-                            file_name: str = None):
+                            file_name: str = None,
+                            foreign_key_fields: bool = False,
+                            related_fields: bool = False,
+                            default_fields: bool = False,
+                            fields: list = None) -> dict:
         """Save file to object.
 
         Args:
@@ -1101,6 +1154,17 @@ class PumpWoodFlaskView(View):
                 Name of the file field in the object.
             file_name (str):
                 File name that will be set for file streaming.
+            fields (list):
+                Set fields to be returned at serializer.
+            foreign_key_fields (bool):
+                If foreign fields should be returned at the object serializer.
+            related_fields (bool):
+                If related fields should be returned at the object serializer.
+            default_fields (bool):
+                If default fields should be returned at the object serializer.
+
+        Returns:
+            Serialized object.
         """
         if file_field not in self.file_fields.keys():
             raise exceptions.PumpWoodForbidden(
