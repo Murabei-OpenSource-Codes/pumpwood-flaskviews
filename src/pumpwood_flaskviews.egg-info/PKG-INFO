@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: pumpwood-flaskviews
-Version: 1.3.6
+Version: 1.3.7
 Summary: Assist creation of flask views in Pumpwood format..
 Home-page: https://github.com/Murabei-OpenSource-Codes/pumpwood-flaskviews
 Author: Murabei Data Science
@@ -19,6 +19,7 @@ Requires-Dist: SQLAlchemy-Utils==0.37.8
 Requires-Dist: SQLAlchemy>=2.0.37
 Requires-Dist: GeoAlchemy2>=0.17.0
 Requires-Dist: orjson>=3.11.3
+Requires-Dist: loguru>=0.7.3
 Dynamic: author
 Dynamic: author-email
 Dynamic: classifier

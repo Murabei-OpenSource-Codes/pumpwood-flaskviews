@@ -1,6 +1,5 @@
 """Pumpwood Marshmellow fields and aux functions."""
 import importlib
-from flask import request
 from typing import List, Dict, Any, Union
 from geoalchemy2.shape import from_shape, to_shape
 from shapely import geometry
