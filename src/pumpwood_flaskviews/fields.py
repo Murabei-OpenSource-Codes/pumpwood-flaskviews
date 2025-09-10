@@ -174,24 +174,10 @@ class MicroserviceForeignKeyField(fields.Field):
             fields (List[str]):
                 Limit the fields that will be returned using microservice.
         """
-        # Fetch data retrieved from microservice in same request, this
-        # is usefull specially when using list end-points with forenging kes
-        key_string = ("m[{model_class}]__pk[{pk}]__fields[{fields}]")\
-            .format(
-                model_class=self.model_class, pk=object_pk,
-                fields=fields)
-        input_string_hash = hash(key_string)
-        cache_dict = getattr(request, '_cache_microservice_fk_field', {})
-        cached_data = cache_dict.get(input_string_hash)
-        if cached_data is not None:
-            return cached_data
-
-        # If values where not cached on request, fetch information using
-        # microservice
         try:
             object_data = self.microservice.list_one(
                 model_class=self.model_class, pk=object_pk,
-                fields=self.fields)
+                fields=self.fields, use_disk_cache=True)
         except exceptions.PumpWoodObjectDoesNotExist:
             return {
                 "model_class": self.model_class,
@@ -214,10 +200,6 @@ class MicroserviceForeignKeyField(fields.Field):
             object_data['__display_field__'] = object_data[self.display_field]
         else:
             object_data['__display_field__'] = None
-
-        # Cache data to reduce future microservice calls on same request
-        cache_dict[input_string_hash] = object_data
-        request._cache_microservice_fk_field = cache_dict
         return object_data
 
     def _serialize(self, value, attr, obj, **kwargs):
