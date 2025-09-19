@@ -66,7 +66,6 @@ class ChoiceField(fields.Field):
         else:
             check_value = getattr(value, "code", None)
 
-        print('val_choices:', val_choices)
         if check_value not in val_choices:
             msg = (
                 "'{value}' is not a valid choice. "
