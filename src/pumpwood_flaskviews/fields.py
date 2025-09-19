@@ -45,6 +45,35 @@ class GeometryField(fields.Field):
 class ChoiceField(fields.Field):
     """Create a marshmallow field to serialize ChoiceFields."""
 
+    def __init__(self, *args, choices=None, **kwargs):
+        """__init__."""
+        self.choices = choices
+        validators = kwargs.pop("validate", [])
+        if self.choices:
+            validators.append(self._validate_choice)
+        super().__init__(validate=validators, *args, **kwargs)
+
+    def _validate_choice(self, value):
+        """Validate choices at the field."""
+        val_choices = [x[0] for x in self.choices]
+        # Add None to possible choices if allow_none is True
+        if self.allow_none:
+            val_choices.append(None)
+
+        check_value = None
+        if isinstance(value, str):
+            check_value = value
+        else:
+            check_value = getattr(value, "code", None)
+
+        print('val_choices:', val_choices)
+        if check_value not in val_choices:
+            msg = (
+                "'{value}' is not a valid choice. "
+                "Must be one of {choices}")
+            raise exceptions.PumpWoodObjectSavingException(
+                msg, payload={'value': check_value, 'choices': val_choices})
+
     def _serialize(self, value, attr, obj):
         if value is not None:
             return value.code
