@@ -1532,7 +1532,7 @@ class PumpWoodFlaskView(View):
                 if item["primary_key"]]
 
         if len(cls._primary_keys) == 1:
-            column = "pk"
+            column = "id"
             help_text = "table primary key"
             tag = translation_tag_template.format(
                 model_class=model_class, field=column)
@@ -1543,7 +1543,7 @@ class PumpWoodFlaskView(View):
 
             dict_columns["pk"] = {
                 "primary_key": True,
-                "column": column,
+                "column": cls._primary_keys,
                 "column__verbose": column__verbose,
                 "help_text": help_text,
                 "help_text__verbose": help_text__verbose,
