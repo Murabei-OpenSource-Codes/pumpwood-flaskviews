@@ -34,6 +34,8 @@ setuptools.setup(
         "GeoAlchemy2>=0.17.0",
         "orjson>=3.11.3",
         "loguru>=0.7.3"
+        "marshmallow<4.0.0",
+        "marshmallow-sqlalchemy<1.4.0"
     ],
     packages=setuptools.find_packages(where="src"),
     python_requires=">=3.6",
