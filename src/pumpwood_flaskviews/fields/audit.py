@@ -89,5 +89,4 @@ class UpdatedAtField(fields.DateTime):
 
     def deserialize(self, value, attr=None, data=None, **kwargs):
         """Overide the default behavior."""
-        print('UpdatedAtField.deserialize')
         return datetime.datetime.now(datetime.UTC)
