@@ -21,7 +21,7 @@ from sqlalchemy.sql.schema import Sequence, UniqueConstraint
 from sqlalchemy.sql.expression import False_ as sql_false
 from sqlalchemy.sql.expression import True_ as sql_true
 from geoalchemy2.types import Geometry
-from marshmallow import ValidationError
+from marshmallow import ValidationError, missing
 from pumpwood_communication import exceptions
 from pumpwood_communication.serializers import CompositePkBase64Converter
 from pumpwood_flaskviews.query import SqlalchemyQueryMisc
@@ -1379,7 +1379,8 @@ class PumpWoodFlaskView(View):
     def cls_fields_options(cls):
         """Return description of the model fields."""
         mapper = alchemy_inspect(cls.model_class)
-        dump_only_fields = getattr(cls.serializer.Meta, "dump_only", [])
+        serializer_obj = cls.serializer()
+        serializer_fields = serializer_obj.fields
 
         # Getting table/class map
         table_class_map = {}
@@ -1392,19 +1393,74 @@ class PumpWoodFlaskView(View):
         model_class = cls.model_class.__name__
         translation_tag_template = "{model_class}__fields__{field}"
         for x in mapper.columns:
-            # column_inspect = alchemy_inspect(x)
-
+            column = x.name
             type_str = None
             if isinstance(x.type, Geometry):
                 type_str = "geometry"
             else:
                 type_str = x.type.python_type.__name__
 
+            # If serializer is set, use serializer information. It will
+            # overide database behavior (serializer's validation and defult
+            # are set before database)
+            temp_field = serializer_fields.get(column)
             read_only = False
-            if x.name in dump_only_fields:
-                read_only = True
+            nullable = False
+            default = None
+            ser_field_default = None
+            if temp_field is not None:
+                dump_only = getattr(
+                    temp_field, 'dump_only', False)
+                # Custom attribute to help with calculated custom fields on
+                # pumpwood
+                pumpwood_read_only = getattr(
+                    temp_field, 'pumpwood_read_only', False)
+                read_only = dump_only or pumpwood_read_only
 
-            column = x.name
+                nullable = getattr(temp_field, 'allow_none')
+                ser_field_default = getattr(temp_field, 'dump_default')
+                ser_field_default = (
+                    None if ser_field_default is missing
+                    else ser_field_default)
+            else:
+                nullable = x.nullable
+
+            column_default = x.default
+            if ser_field_default is not None:
+                default = ser_field_default
+            elif column_default is not None:
+                arg = getattr(x.default, 'arg', None)
+                if isinstance(arg, GenericFunction):
+                    default = arg.description
+                elif arg is dict:
+                    default = {}
+                elif inspect.isfunction(arg):
+                    default = arg.__name__ + "()"
+                elif isinstance(x.default, Sequence):
+                    default = "#autoincrement#"
+                elif isinstance(arg, sql_false):
+                    default = False
+                elif isinstance(arg, sql_true):
+                    default = True
+                else:
+                    default = arg
+            elif x.server_default is not None:
+                arg = getattr(x.server_default, 'arg', None)
+                if isinstance(arg, GenericFunction):
+                    default = arg.description
+                elif arg is dict:
+                    default = {}
+                elif inspect.isfunction(arg):
+                    default = arg.__name__ + "()"
+                elif isinstance(x.server_default, Sequence):
+                    default = "#autoincrement#"
+                elif isinstance(arg, sql_false):
+                    default = False
+                elif isinstance(arg, sql_true):
+                    default = True
+                else:
+                    default = arg
+
             help_text = x.doc
             tag = translation_tag_template.format(
                 model_class=model_class, field=column)
@@ -1419,9 +1475,9 @@ class PumpWoodFlaskView(View):
                 "help_text": help_text,
                 "help_text__verbose": help_text__verbose,
                 "type": type_str,
-                "nullable": x.nullable,
+                "nullable": nullable,
                 "read_only": read_only,
-                "default": None,
+                "default": default,
                 "unique": x.unique,
                 "extra_info": {}
             }
@@ -1445,43 +1501,9 @@ class PumpWoodFlaskView(View):
             if file_field is not None:
                 column_info["type"] = "file"
                 column_info["permited_file_types"] = file_field
-
-            if x.default is not None:
-                arg = getattr(x.default, 'arg', None)
-                if isinstance(arg, GenericFunction):
-                    column_info["default"] = arg.description
-                elif arg is dict:
-                    column_info["default"] = {}
-                elif inspect.isfunction(arg):
-                    column_info["default"] = arg.__name__ + "()"
-                elif isinstance(x.default, Sequence):
-                    column_info["default"] = "#autoincrement#"
-                elif isinstance(arg, sql_false):
-                    column_info["default"] = False
-                elif isinstance(arg, sql_true):
-                    column_info["default"] = True
-                else:
-                    column_info["default"] = arg
-
-            elif x.server_default is not None:
-                arg = getattr(x.server_default, 'arg', None)
-                if isinstance(arg, GenericFunction):
-                    column_info["default"] = arg.description
-                elif arg is dict:
-                    column_info["default"] = {}
-                elif inspect.isfunction(arg):
-                    column_info["default"] = arg.__name__ + "()"
-                elif isinstance(x.server_default, Sequence):
-                    column_info["default"] = "#autoincrement#"
-                elif isinstance(arg, sql_false):
-                    column_info["default"] = False
-                elif isinstance(arg, sql_true):
-                    column_info["default"] = True
-                else:
-                    column_info["default"] = arg
             dict_columns[column_info["column"]] = column_info
 
-        ######################################################
+        #######################################################
         # Modifying column types associated with foreign keys #
         # foreign_key dictionary will pass to front-end information to
         # render.

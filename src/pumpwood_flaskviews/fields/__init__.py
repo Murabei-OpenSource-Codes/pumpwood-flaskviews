@@ -5,9 +5,11 @@ from .general import (
     GeometryField, ChoiceField, PrimaryKeyField)
 from .microservice import (
     MicroserviceForeignKeyField, MicroserviceRelatedField)
+from .encrypt import EncryptedField
 
 
 __all__ = [
     CreatedByIdField, UpdatedByIdField, CreatedAtField, UpdatedAtField,
     GeometryField, ChoiceField, PrimaryKeyField,
-    MicroserviceForeignKeyField, MicroserviceRelatedField]
+    MicroserviceForeignKeyField, MicroserviceRelatedField,
+    EncryptedField]
