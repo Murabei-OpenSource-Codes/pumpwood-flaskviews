@@ -233,6 +233,7 @@ class SqlalchemyQueryMisc():
                 fil['operation'](fil['column'], fil['value']))
 
         """
+        model_class_name = object_model.__class__.__name__
         join_models = []
         columns_values_filter = []
         for arg, value in query_dict.items():
@@ -283,27 +284,34 @@ class SqlalchemyQueryMisc():
                 elif token in columns.keys():
                     if column is not None:
                         template = "It is not permited more columns after " +\
-                            "column underscore (%s). Original query " + \
-                            "string (%s)"
+                            "column underscore ({key}). Original query " + \
+                            "string ({string})"
                         raise PumpWoodQueryException(
-                            template % (column.key, arg))
+                            template, payload={
+                                'key': column.key,
+                                'string': arg})
                     column = columns[token]
                 elif token in cls._underscore_operators.keys():
                     operation_key = token
                 else:
-                    msg = 'It is not possible to continue building query, ' + \
-                        'underscore token ({token}) not found on model ' + \
-                        'columns, relations or operations. Original query ' + \
-                        'string: "{query}".\n'
-                    msg = msg + 'Columns: {cols}\n'
-                    msg = msg + 'Relations: {rels}\n'
-                    msg = msg + 'Operations: {opers}%s'
-                    final_msg = msg.format(
-                        token=token, query=arg,
-                        cols=str(list(columns.keys())),
-                        rels=str(list(relations.keys())),
-                        opers=str(list(cls._underscore_operators.keys())))
-                    raise PumpWoodQueryException(final_msg)
+                    msg = (
+                        'It is not possible to continue building query, ' +
+                        'underscore token ({token}) not found on model ' +
+                        '[{model_name}] columns, relations or operations.' +
+                        'Original query ' +
+                        'string: "{query}".\n' +
+                        'Columns: {cols}\n' +
+                        'Relations: {rels}\n' +
+                        'Operations: {opers}')
+                    raise PumpWoodQueryException(
+                        msg, payload={
+                            'model_name': model_class_name,
+                            'token': token, 'query': arg,
+                            'cols': str(list(columns.keys())),
+                            'rels': str(list(relations.keys())),
+                            'opers': str(
+                                list(cls._underscore_operators.keys()))
+                        })
 
             if order:
                 if value not in ['asc', 'desc']:

@@ -13,6 +13,7 @@ from flask.views import View
 from flask import request, Response
 from flask import jsonify, send_file
 from werkzeug.utils import secure_filename
+from loguru import logger
 from sqlalchemy import inspect as alchemy_inspect
 from sqlalchemy_utils.types.choice import ChoiceType
 from sqlalchemy.sql import text
@@ -564,6 +565,9 @@ class PumpWoodFlaskView(View):
 
         # Do not display deleted objects
         if hasattr(self.model_class, 'deleted'):
+            info_msg = 'deleted field detected: model_class[{model_class}]'\
+                .format(model_class=self.model_class.__class__.__name__)
+            logger.info(info_msg)
             exclude_dict_keys = exclude_dict.keys()
             any_delete = False
             for key in exclude_dict_keys:
@@ -625,6 +629,9 @@ class PumpWoodFlaskView(View):
         self.get_session()
 
         if hasattr(self.model_class, 'deleted'):
+            info_msg = 'deleted field detected: model_class[{model_class}]'\
+                .format(model_class=self.model_class.__class__.__name__)
+            logger.info(info_msg)
             exclude_dict_keys = exclude_dict.keys()
             any_delete = False
             for key in exclude_dict_keys:
