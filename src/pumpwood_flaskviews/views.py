@@ -292,6 +292,9 @@ class PumpWoodFlaskView(View):
 
     def dispatch_request(self, end_point, first_arg=None, second_arg=None):
         """Dispatch request acordint o end_point, first_arg and second_arg."""
+        # Force model to be init and avoid 'DeclarativeAttributeIntercept'
+        _ = self.model_class.__mapper__
+
         AuthFactory.check_authorization(
             request_method=request.method.lower(),
             path=request.path, end_point=end_point,
