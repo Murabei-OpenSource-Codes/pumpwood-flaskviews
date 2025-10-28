@@ -227,6 +227,9 @@ class PumpWoodFlaskView(View):
         Returns:
             Returns a serialized object of KongRoute.
         """
+        # Inpect model to init it and avoid DeclarativeAttributeIntercept
+        _ = alchemy_inspect(cls.model_class)
+
         if service_object is not None:
             cls.microservice.login()
             serializer_obj = cls.serializer()
@@ -293,7 +296,6 @@ class PumpWoodFlaskView(View):
     def dispatch_request(self, end_point, first_arg=None, second_arg=None):
         """Dispatch request acordint o end_point, first_arg and second_arg."""
         # Force model to be init and avoid 'DeclarativeAttributeIntercept'
-        _ = self.model_class.__mapper__
 
         AuthFactory.check_authorization(
             request_method=request.method.lower(),
