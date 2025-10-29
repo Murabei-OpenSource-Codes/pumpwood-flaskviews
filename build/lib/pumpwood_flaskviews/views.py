@@ -38,7 +38,7 @@ def _model_has_column(model, column: str):
     mapper = alchemy_inspect(model)
     debug = "{model} {columns}"\
         .format(model=model.__name__, columns=str(mapper.columns))
-    print(debug)
+    logger.info(debug)
     return column in mapper.columns
 
 
