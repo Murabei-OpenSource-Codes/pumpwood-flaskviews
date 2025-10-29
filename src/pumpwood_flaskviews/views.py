@@ -227,9 +227,6 @@ class PumpWoodFlaskView(View):
         Returns:
             Returns a serialized object of KongRoute.
         """
-        # Inpect model to init it and avoid DeclarativeAttributeIntercept
-        _ = alchemy_inspect(cls.model_class)
-
         if service_object is not None:
             cls.microservice.login()
             serializer_obj = cls.serializer()

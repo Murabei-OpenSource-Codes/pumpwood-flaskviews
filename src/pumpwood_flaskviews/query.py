@@ -233,7 +233,7 @@ class SqlalchemyQueryMisc():
                 fil['operation'](fil['column'], fil['value']))
 
         """
-        model_class_name = object_model.__class__.__name__
+        model_class_name = object_model.__name__
         join_models = []
         columns_values_filter = []
         for arg, value in query_dict.items():
