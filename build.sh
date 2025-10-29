@@ -15,7 +15,7 @@ sed -e 's#{VERSION}#'"${VERSION}"'#g' setup_template.py > setup.py
 
 # Build package
 rm -R build/
-python3 setup.py build sdist bdist_wheel
+python setup.py build sdist bdist_wheel
 
 # Commit as a tag on repository
 git add --all
