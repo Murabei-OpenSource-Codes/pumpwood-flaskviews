@@ -21,7 +21,7 @@ class MicroserviceForeignKeyField(fields.Field):
     def __init__(self, source: str,
                  microservice: PumpWoodMicroService,
                  model_class: str, display_field: str = None,
-                 complementary_source: Dict[str, str] = dict(),
+                 complementary_source: Dict[str, str] = None,
                  fields: List[str] = None, **kwargs):
         """Class constructor.
 
@@ -49,6 +49,10 @@ class MicroserviceForeignKeyField(fields.Field):
             **kwargs:
                 Compatibylity with other versions and super of method.
         """
+        complementary_source = (
+            {} if complementary_source is None
+            else complementary_source)
+
         # Validations
         if type(source) is not str:
             msg = "source argument must be a string"
@@ -173,9 +177,9 @@ class MicroserviceRelatedField(fields.Field):
 
     def __init__(self, microservice: PumpWoodMicroService,
                  model_class: str, foreign_key: str,
-                 complementary_foreign_key: Dict[str, str] = dict(),
-                 pk_field: str = 'id', order_by: List[str] = ["id"],
-                 exclude_dict: Dict[str, str] = dict(),
+                 complementary_foreign_key: None | Dict[str, str] = None,
+                 pk_field: str = 'id', order_by: List[str] = None,
+                 exclude_dict: None | Dict[str, str] = None,
                  help_text: str = "", read_only: bool = False,
                  fields: List[str] = None, **kwargs):
         """Class constructor.
@@ -215,6 +219,16 @@ class MicroserviceRelatedField(fields.Field):
             **kwargs (dict):
                 Dictonary if extra parameters to be used on function.
         """
+        complementary_foreign_key = (
+            {} if complementary_foreign_key is None
+            else complementary_foreign_key)
+        order_by = (
+            ["id"] if order_by is None
+            else order_by)
+        exclude_dict = (
+            {} if exclude_dict is None
+            else exclude_dict)
+
         # Validation
         if type(complementary_foreign_key) is not dict:
             msg = "complementary_foreign_key type must be a dict"
