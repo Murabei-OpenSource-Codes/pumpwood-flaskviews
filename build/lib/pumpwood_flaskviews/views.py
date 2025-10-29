@@ -568,7 +568,7 @@ class PumpWoodFlaskView(View):
         # Do not display deleted objects
         if hasattr(self.model_class, 'deleted'):
             info_msg = 'deleted field detected: model_class[{model_class}]'\
-                .format(model_class=self.model_class.__class__.__name__)
+                .format(model_class=self.model_class.__name__)
             logger.info(info_msg)
             exclude_dict_keys = exclude_dict.keys()
             any_delete = False
