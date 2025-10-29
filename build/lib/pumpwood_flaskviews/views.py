@@ -36,9 +36,6 @@ from pumpwood_database_error import (
 def _model_has_column(model, column: str):
     """Check if model has column."""
     mapper = alchemy_inspect(model)
-    debug = "{model} {columns}"\
-        .format(model=model.__name__, columns=str(mapper.columns))
-    logger.info(debug)
     return column in mapper.columns
 
 
