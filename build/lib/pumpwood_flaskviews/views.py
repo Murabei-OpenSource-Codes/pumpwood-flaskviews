@@ -33,6 +33,12 @@ from pumpwood_database_error import (
     TreatPsycopg2Error, TreatSQLAlchemyError)
 
 
+def _model_has_column(model, column: str):
+    """Check if model has column."""
+    mapper = alchemy_inspect(model)
+    return column in mapper.columns
+
+
 class PumpWoodFlaskView(View):
     """PumpWoodFlaskView base view for pumpwood like models.
 
@@ -293,7 +299,6 @@ class PumpWoodFlaskView(View):
     def dispatch_request(self, end_point, first_arg=None, second_arg=None):
         """Dispatch request acordint o end_point, first_arg and second_arg."""
         # Force model to be init and avoid 'DeclarativeAttributeIntercept'
-        _ = self.model_class.__mapper__
 
         AuthFactory.check_authorization(
             request_method=request.method.lower(),
@@ -532,8 +537,8 @@ class PumpWoodFlaskView(View):
         return super(PumpWoodFlaskView, cls).as_view(
             name=cls.model_class.__name__, *class_args, **class_kwargs)
 
-    def list(self, filter_dict: dict = {}, exclude_dict: dict = {},
-             order_by: list = [], fields: list = None,
+    def list(self, filter_dict: None | dict = None, exclude_dict: dict = None,
+             order_by: list = None, fields: list = None,
              limit: int = None, default_fields: bool = False,
              foreign_key_fields: bool = False, **kwargs) -> list:
         """Return query result pagination.
@@ -564,12 +569,16 @@ class PumpWoodFlaskView(View):
             Return a list of serialized objects using self.serializer and
             filtered by args.
         """
+        # Set list and dicts in the fuction to no bug with pointers
+        filter_dict = {} if filter_dict is None else filter_dict
+        exclude_dict = {} if exclude_dict is None else exclude_dict
+        order_by = [] if order_by is None else order_by
         self.get_session()
 
         # Do not display deleted objects
-        if hasattr(self.model_class, 'deleted'):
+        if _model_has_column(self.model_class, column='deleted'):
             info_msg = 'deleted field detected: model_class[{model_class}]'\
-                .format(model_class=self.model_class.__class__.__name__)
+                .format(model_class=self.model_class.__name__)
             logger.info(info_msg)
             exclude_dict_keys = exclude_dict.keys()
             any_delete = False
@@ -597,10 +606,10 @@ class PumpWoodFlaskView(View):
             related_fields=False)
         return list_serializer.dump(query_result, many=True)
 
-    def list_without_pag(self, filter_dict: dict = {}, exclude_dict: dict = {},
-                         order_by: list = [], fields: list = None,
-                         default_fields: bool = False,
-                         foreign_key_fields: bool = False, **kwargs) -> list:
+    def list_without_pag(self, filter_dict: None | dict = None,
+                         exclude_dict: dict = None, order_by: list = None,
+                        fields: list = None, default_fields: bool = False,
+                        foreign_key_fields: bool = False, **kwargs) -> list:
         """Return query without pagination.
 
         Args:
@@ -629,11 +638,16 @@ class PumpWoodFlaskView(View):
             Return a list of serialized objects using self.serializer and
             filtered by args without pagination all values.
         """
+        # Set list and dicts in the fuction to no bug with pointers
+        filter_dict = {} if filter_dict is None else filter_dict
+        exclude_dict = {} if exclude_dict is None else exclude_dict
+        order_by = [] if order_by is None else order_by
         self.get_session()
 
-        if hasattr(self.model_class, 'deleted'):
+        # Do not display deleted objects
+        if _model_has_column(self.model_class, column='deleted'):
             info_msg = 'deleted field detected: model_class[{model_class}]'\
-                .format(model_class=self.model_class.__class__.__name__)
+                .format(model_class=self.model_class.__name__)
             logger.info(info_msg)
             exclude_dict_keys = exclude_dict.keys()
             any_delete = False
@@ -900,7 +914,8 @@ class PumpWoodFlaskView(View):
         object_dump = temp_serializer.dump(model_object, many=False)
 
         # Remove deleted entries from results
-        if hasattr(self.model_class, 'deleted') and not force_delete:
+        has_deleted = _model_has_column(self.model_class, column='deleted')
+        if has_deleted and not force_delete:
             model_object.deleted = True
             session.add(model_object)
             session.commit()
@@ -1359,7 +1374,7 @@ class PumpWoodFlaskView(View):
         session = self.get_session()
 
         # Do not display deleted objects
-        if hasattr(self.model_class, 'deleted'):
+        if _model_has_column(self.model_class, column='deleted'):
             exclude_dict_keys = exclude_dict.keys()
             any_delete = False
             for key in exclude_dict_keys:
@@ -1751,8 +1766,9 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
         return super(PumpWoodDataFlaskView, self).dispatch_request(
             end_point, first_arg, second_arg)
 
-    def pivot(self, filter_dict: dict = {}, exclude_dict: dict = {},
-              order_by: list = [], columns: list = [], format: str = 'list',
+    def pivot(self, filter_dict: None | dict = None,
+              exclude_dict: None | dict = None, order_by: None | list = None,
+              columns: None | list = None, format: str = 'list',
               variables: list = None, show_deleted: bool = False,
               add_pk_column: bool = False, limit: int = None,
               **kwargs):
@@ -1783,6 +1799,11 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
             **kwargs:
                 For compatibylity of previous versions and super function.
         """
+        # Set list and dicts in the fuction to no bug with pointers
+        filter_dict = {} if filter_dict is None else filter_dict
+        exclude_dict = {} if exclude_dict is None else exclude_dict
+        order_by = [] if order_by is None else order_by
+        columns = [] if columns is None else order_by
         self.get_session()
 
         model_variables = variables or self.model_variables
@@ -1801,7 +1822,7 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
                 "'records','index']")
 
         # Remove deleted entries from results
-        if hasattr(self.model_class, 'deleted'):
+        if _model_has_column(self.model_class, column='deleted'):
             if not show_deleted:
                 filter_dict["deleted"] = False
 
