@@ -33,6 +33,12 @@ from pumpwood_database_error import (
     TreatPsycopg2Error, TreatSQLAlchemyError)
 
 
+def _model_has_column(model, column: str):
+    """Check if model has column."""
+    mapper = alchemy_inspect(model)
+    return column in mapper.columns
+
+
 class PumpWoodFlaskView(View):
     """PumpWoodFlaskView base view for pumpwood like models.
 
@@ -566,7 +572,7 @@ class PumpWoodFlaskView(View):
         self.get_session()
 
         # Do not display deleted objects
-        if hasattr(self.model_class, 'deleted'):
+        if _model_has_column(self.model_class, column='deleted'):
             info_msg = 'deleted field detected: model_class[{model_class}]'\
                 .format(model_class=self.model_class.__name__)
             logger.info(info_msg)
@@ -630,9 +636,10 @@ class PumpWoodFlaskView(View):
         """
         self.get_session()
 
-        if hasattr(self.model_class, 'deleted'):
+        # Do not display deleted objects
+        if _model_has_column(self.model_class, column='deleted'):
             info_msg = 'deleted field detected: model_class[{model_class}]'\
-                .format(model_class=self.model_class.__class__.__name__)
+                .format(model_class=self.model_class.__name__)
             logger.info(info_msg)
             exclude_dict_keys = exclude_dict.keys()
             any_delete = False
@@ -899,7 +906,8 @@ class PumpWoodFlaskView(View):
         object_dump = temp_serializer.dump(model_object, many=False)
 
         # Remove deleted entries from results
-        if hasattr(self.model_class, 'deleted') and not force_delete:
+        has_deleted = _model_has_column(self.model_class, column='deleted')
+        if has_deleted and not force_delete:
             model_object.deleted = True
             session.add(model_object)
             session.commit()
@@ -1358,7 +1366,7 @@ class PumpWoodFlaskView(View):
         session = self.get_session()
 
         # Do not display deleted objects
-        if hasattr(self.model_class, 'deleted'):
+        if _model_has_column(self.model_class, column='deleted'):
             exclude_dict_keys = exclude_dict.keys()
             any_delete = False
             for key in exclude_dict_keys:
@@ -1800,7 +1808,7 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
                 "'records','index']")
 
         # Remove deleted entries from results
-        if hasattr(self.model_class, 'deleted'):
+        if _model_has_column(self.model_class, column='deleted'):
             if not show_deleted:
                 filter_dict["deleted"] = False
 
