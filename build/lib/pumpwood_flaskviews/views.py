@@ -35,6 +35,7 @@ from pumpwood_database_error import (
 
 from .config import PUMPWOOD_FLASKVIEWS__INFO_CACHE_TIMEOUT
 
+
 def _model_has_column(model, column: str):
     """Check if model has column."""
     mapper = alchemy_inspect(model)
@@ -138,7 +139,8 @@ class PumpWoodFlaskView(View):
         serializer_obj = self.serializer()
         return serializer_obj.get_list_fields()
 
-    def get_primary_keys(self):
+    @classmethod
+    def get_primary_keys(cls):
         """Return primary keys used on model at database.
 
         If class attribute `_primary_keys` is not set, `cls_fields_options()`
@@ -146,9 +148,13 @@ class PumpWoodFlaskView(View):
         reducing the need of inspecting the database at each call of the
         function.
         """
-        if self._primary_keys is None:
-            self.cls_fields_options()
-        return self._primary_keys
+        if cls._primary_keys is None:
+            dict_columns = cls.cls_fields_options()
+            if cls._primary_keys is None:
+                cls._primary_keys = [
+                    key for key, item in dict_columns.items()
+                    if item["primary_key"]]
+        return cls._primary_keys
 
     def check_microservices(self, microservice: str) -> bool:
         """Check if microservice is avaiable.
@@ -1584,11 +1590,6 @@ class PumpWoodFlaskView(View):
 
         ############################################################
         # Stores primary keys as attribute to help other functions #
-        if cls._primary_keys is None:
-            cls._primary_keys = [
-                key for key, item in dict_columns.items()
-                if item["primary_key"]]
-
         if len(cls._primary_keys) == 1:
             column = "id"
             help_text = "table primary key"
