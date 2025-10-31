@@ -1405,6 +1405,15 @@ class PumpWoodFlaskView(View):
     @classmethod
     def cls_fields_options(cls):
         """Return description of the model fields."""
+        # Get information from cache if avaiable
+        hash_dict = {
+            "context": "pumpwood_flaskviews",
+            "end-point": "cls_fields_options",
+            "model_class": cls.model_class.__name__}
+        cache_data = default_cache.get(hash_dict=hash_dict)
+        if cache_data is not None:
+            return cache_data
+
         mapper = alchemy_inspect(cls.model_class)
         serializer_obj = cls.serializer()
         serializer_fields = serializer_obj.fields
@@ -1625,6 +1634,12 @@ class PumpWoodFlaskView(View):
                 "default": None,
                 "unique": True,
                 "partition": cls.table_partition}
+
+        # Set cache to reduce response time
+        default_cache.set(
+            hash_dict=hash_dict,
+            value=dict_columns,
+            expire=PUMPWOOD_FLASKVIEWS__INFO_CACHE_TIMEOUT)
         return dict_columns
 
     def search_options(self):
