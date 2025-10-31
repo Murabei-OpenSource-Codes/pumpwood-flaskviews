@@ -33,6 +33,7 @@ from pumpwood_i8n.singletons import pumpwood_i8n as _
 from pumpwood_database_error import (
     TreatPsycopg2Error, TreatSQLAlchemyError)
 
+from .config import PUMPWOOD_FLASKVIEWS__INFO_CACHE_TIMEOUT
 
 def _model_has_column(model, column: str):
     """Check if model has column."""
@@ -179,11 +180,11 @@ class PumpWoodFlaskView(View):
             return cache_data
         else:
             available_microservices = \
-                self.microservice.list_registered_routes().keys()
+                list(self.microservice.list_registered_routes().keys())
             default_cache.set(
                 hash_dict=hash_dict,
                 value=available_microservices,
-                expire=300)
+                expire=PUMPWOOD_FLASKVIEWS__INFO_CACHE_TIMEOUT)
             return available_microservices
 
     def get_session(self):
