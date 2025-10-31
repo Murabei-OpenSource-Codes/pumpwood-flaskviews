@@ -25,12 +25,14 @@ from geoalchemy2.types import Geometry
 from marshmallow import ValidationError, missing
 from pumpwood_communication import exceptions
 from pumpwood_communication.serializers import CompositePkBase64Converter
+from pumpwood_communication.cache import default_cache
 from pumpwood_flaskviews.query import SqlalchemyQueryMisc
 from pumpwood_flaskviews.auth import AuthFactory
 from pumpwood_flaskviews.action import load_action_parameters
 from pumpwood_i8n.singletons import pumpwood_i8n as _
 from pumpwood_database_error import (
     TreatPsycopg2Error, TreatSQLAlchemyError)
+from pumpwood_flaskviews.config import PUMPWOOD_FLASKVIEWS__INFO_CACHE_TIMEOUT
 
 
 def _model_has_column(model, column: str):
@@ -136,7 +138,16 @@ class PumpWoodFlaskView(View):
         serializer_obj = self.serializer()
         return serializer_obj.get_list_fields()
 
-    def get_primary_keys(self):
+    @classmethod
+    def _extract_primary_keys(cls,
+                              dict_columns: dict[str | dict]) -> list[str]:
+        """Extract primary keys from fields."""
+        return [
+            key for key, item in dict_columns.items()
+            if item["primary_key"]]
+
+    @classmethod
+    def get_primary_keys(cls):
         """Return primary keys used on model at database.
 
         If class attribute `_primary_keys` is not set, `cls_fields_options()`
@@ -144,9 +155,11 @@ class PumpWoodFlaskView(View):
         reducing the need of inspecting the database at each call of the
         function.
         """
-        if self._primary_keys is None:
-            self.cls_fields_options()
-        return self._primary_keys
+        if cls._primary_keys is None:
+            dict_columns = cls.cls_fields_options()
+            cls._primary_keys = cls._extract_primary_keys(
+                dict_columns=dict_columns)
+        return cls._primary_keys
 
     def check_microservices(self, microservice: str) -> bool:
         """Check if microservice is avaiable.
@@ -170,20 +183,20 @@ class PumpWoodFlaskView(View):
         Kwargs:
             No kwargs.
         """
-        if self.microservice is None:
-            return []
-
-        if self.available_microservices is None:
-            self.available_microservices = \
-                self.microservice.list_registered_routes().keys()
-            self.__last_available_microservices = datetime.datetime.utcnow()
+        hash_dict = {
+            "context": "pumpwood_flaskviews",
+            "end-point": "get_available_microservices"}
+        cache_data = default_cache.get(hash_dict=hash_dict)
+        if cache_data is not None:
+            return cache_data
         else:
-            now_time = datetime.datetime.utcnow()
-            time_since_update = now_time - self.__last_available_microservices
-            if datetime.timedelta(hours=1) < time_since_update:
-                self.available_microservices = \
-                    self.microservice.list_registered_routes().keys()
-        return self.available_microservices
+            available_microservices = \
+                list(self.microservice.list_registered_routes().keys())
+            default_cache.set(
+                hash_dict=hash_dict,
+                value=available_microservices,
+                expire=PUMPWOOD_FLASKVIEWS__INFO_CACHE_TIMEOUT)
+            return available_microservices
 
     def get_session(self):
         """Ping connection before using database.
@@ -1403,6 +1416,15 @@ class PumpWoodFlaskView(View):
     @classmethod
     def cls_fields_options(cls):
         """Return description of the model fields."""
+        # Get information from cache if avaiable
+        hash_dict = {
+            "context": "pumpwood_flaskviews",
+            "end-point": "cls_fields_options",
+            "model_class": cls.model_class.__name__}
+        cache_data = default_cache.get(hash_dict=hash_dict)
+        if cache_data is not None:
+            return cache_data
+
         mapper = alchemy_inspect(cls.model_class)
         serializer_obj = cls.serializer()
         serializer_fields = serializer_obj.fields
@@ -1573,56 +1595,36 @@ class PumpWoodFlaskView(View):
 
         ############################################################
         # Stores primary keys as attribute to help other functions #
-        if cls._primary_keys is None:
-            cls._primary_keys = [
-                key for key, item in dict_columns.items()
-                if item["primary_key"]]
+        primary_keys = cls._extract_primary_keys(
+            dict_columns=dict_columns)
+        help_text = (
+            "table primary key" if len(primary_keys) == 1
+            else "base64 encoded json dictionary")
+        tag = translation_tag_template.format(
+            model_class=model_class, field='pk')
+        column__verbose = _.t(
+            sentence='pk', tag=tag + "__column")
+        help_text__verbose = _.t(
+            sentence=help_text, tag=tag + "__help_text")
 
-        if len(cls._primary_keys) == 1:
-            column = "id"
-            help_text = "table primary key"
-            tag = translation_tag_template.format(
-                model_class=model_class, field=column)
-            column__verbose = _.t(
-                sentence=column, tag=tag + "__column")
-            help_text__verbose = _.t(
-                sentence=help_text, tag=tag + "__help_text")
+        dict_columns["pk"] = {
+            "primary_key": True,
+            "partition": cls.table_partition,
+            "column": primary_keys,
+            "column__verbose": column__verbose,
+            "help_text": help_text,
+            "help_text__verbose": help_text__verbose,
+            "type": "#autoincrement#",
+            "nullable": True,
+            "read_only": True,
+            "default": "#autoincrement#",
+            "unique": True}
 
-            dict_columns["pk"] = {
-                "primary_key": True,
-                "column": cls._primary_keys,
-                "column__verbose": column__verbose,
-                "help_text": help_text,
-                "help_text__verbose": help_text__verbose,
-                "type": "#autoincrement#",
-                "nullable": False,
-                "read_only": True,
-                "default": "#autoincrement#",
-                "unique": True,
-                "relationships": cls.relationships}
-        else:
-            column = "pk"
-            help_text = "base64 encoded json dictionary"
-            tag = translation_tag_template.format(
-                model_class=model_class, field=column)
-            help_text__verbose = _.t(
-                sentence=help_text, tag=tag + "__help_text")
-            column__verbose = [
-                _.t(sentence=x, tag=tag + "__column")
-                for x in cls._primary_keys]
-
-            dict_columns["pk"] = {
-                "primary_key": True,
-                "column": cls._primary_keys,
-                "column__verbose": column__verbose,
-                "help_text": help_text,
-                "help_text__verbose": help_text__verbose,
-                "type": "str",
-                "nullable": False,
-                "read_only": True,
-                "default": None,
-                "unique": True,
-                "partition": cls.table_partition}
+        # Set cache to reduce response time
+        default_cache.set(
+            hash_dict=hash_dict,
+            value=dict_columns,
+            expire=PUMPWOOD_FLASKVIEWS__INFO_CACHE_TIMEOUT)
         return dict_columns
 
     def search_options(self):
@@ -1717,8 +1719,9 @@ class PumpWoodFlaskView(View):
             field (str):
                 Set to validade an specific field. If not set all
                 fields will be validated.
-        Return [dict]:
-            Return a dictionary
+
+        Returns:
+            Return a dictionary.
         """
         gui_readonly = self.get_gui_readonly()
         fill_options = self.cls_fields_options()
@@ -1803,7 +1806,7 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
         filter_dict = {} if filter_dict is None else filter_dict
         exclude_dict = {} if exclude_dict is None else exclude_dict
         order_by = [] if order_by is None else order_by
-        columns = [] if columns is None else order_by
+        columns = [] if columns is None else columns
         self.get_session()
 
         model_variables = variables or self.model_variables
