@@ -1717,8 +1717,9 @@ class PumpWoodFlaskView(View):
             field (str):
                 Set to validade an specific field. If not set all
                 fields will be validated.
-        Return [dict]:
-            Return a dictionary
+
+        Returns:
+            Return a dictionary.
         """
         gui_readonly = self.get_gui_readonly()
         fill_options = self.cls_fields_options()
