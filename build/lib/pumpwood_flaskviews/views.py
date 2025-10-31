@@ -32,8 +32,7 @@ from pumpwood_flaskviews.action import load_action_parameters
 from pumpwood_i8n.singletons import pumpwood_i8n as _
 from pumpwood_database_error import (
     TreatPsycopg2Error, TreatSQLAlchemyError)
-
-from .config import PUMPWOOD_FLASKVIEWS__INFO_CACHE_TIMEOUT
+from pumpwood_flaskviews.config import PUMPWOOD_FLASKVIEWS__INFO_CACHE_TIMEOUT
 
 
 def _model_has_column(model, column: str):
@@ -140,6 +139,14 @@ class PumpWoodFlaskView(View):
         return serializer_obj.get_list_fields()
 
     @classmethod
+    def _extract_primary_keys(cls,
+                              dict_columns: dict[str | dict]) -> list[str]:
+        """Extract primary keys from fields."""
+        return [
+            key for key, item in dict_columns.items()
+            if item["primary_key"]]
+
+    @classmethod
     def get_primary_keys(cls):
         """Return primary keys used on model at database.
 
@@ -150,10 +157,8 @@ class PumpWoodFlaskView(View):
         """
         if cls._primary_keys is None:
             dict_columns = cls.cls_fields_options()
-            if cls._primary_keys is None:
-                cls._primary_keys = [
-                    key for key, item in dict_columns.items()
-                    if item["primary_key"]]
+            cls._primary_keys = cls._extract_primary_keys(
+                dict_columns=dict_columns)
         return cls._primary_keys
 
     def check_microservices(self, microservice: str) -> bool:
@@ -1590,51 +1595,30 @@ class PumpWoodFlaskView(View):
 
         ############################################################
         # Stores primary keys as attribute to help other functions #
-        if len(cls._primary_keys) == 1:
-            column = "id"
-            help_text = "table primary key"
-            tag = translation_tag_template.format(
-                model_class=model_class, field=column)
-            column__verbose = _.t(
-                sentence=column, tag=tag + "__column")
-            help_text__verbose = _.t(
-                sentence=help_text, tag=tag + "__help_text")
+        primary_keys = cls._extract_primary_keys(
+            dict_columns=dict_columns)
+        help_text = (
+            "table primary key" if len(primary_keys) == 1
+            else "base64 encoded json dictionary")
+        tag = translation_tag_template.format(
+            model_class=model_class, field='pk')
+        column__verbose = _.t(
+            sentence='pk', tag=tag + "__column")
+        help_text__verbose = _.t(
+            sentence=help_text, tag=tag + "__help_text")
 
-            dict_columns["pk"] = {
-                "primary_key": True,
-                "column": cls._primary_keys,
-                "column__verbose": column__verbose,
-                "help_text": help_text,
-                "help_text__verbose": help_text__verbose,
-                "type": "#autoincrement#",
-                "nullable": False,
-                "read_only": True,
-                "default": "#autoincrement#",
-                "unique": True,
-                "relationships": cls.relationships}
-        else:
-            column = "pk"
-            help_text = "base64 encoded json dictionary"
-            tag = translation_tag_template.format(
-                model_class=model_class, field=column)
-            help_text__verbose = _.t(
-                sentence=help_text, tag=tag + "__help_text")
-            column__verbose = [
-                _.t(sentence=x, tag=tag + "__column")
-                for x in cls._primary_keys]
-
-            dict_columns["pk"] = {
-                "primary_key": True,
-                "column": cls._primary_keys,
-                "column__verbose": column__verbose,
-                "help_text": help_text,
-                "help_text__verbose": help_text__verbose,
-                "type": "str",
-                "nullable": False,
-                "read_only": True,
-                "default": None,
-                "unique": True,
-                "partition": cls.table_partition}
+        dict_columns["pk"] = {
+            "primary_key": True,
+            "partition": cls.table_partition,
+            "column": primary_keys,
+            "column__verbose": column__verbose,
+            "help_text": help_text,
+            "help_text__verbose": help_text__verbose,
+            "type": "#autoincrement#",
+            "nullable": True,
+            "read_only": True,
+            "default": "#autoincrement#",
+            "unique": True}
 
         # Set cache to reduce response time
         default_cache.set(
