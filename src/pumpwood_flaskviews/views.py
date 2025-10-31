@@ -25,6 +25,7 @@ from geoalchemy2.types import Geometry
 from marshmallow import ValidationError, missing
 from pumpwood_communication import exceptions
 from pumpwood_communication.serializers import CompositePkBase64Converter
+from pumpwood_communication.cache import default_cache
 from pumpwood_flaskviews.query import SqlalchemyQueryMisc
 from pumpwood_flaskviews.auth import AuthFactory
 from pumpwood_flaskviews.action import load_action_parameters
@@ -170,20 +171,20 @@ class PumpWoodFlaskView(View):
         Kwargs:
             No kwargs.
         """
-        if self.microservice is None:
-            return []
-
-        if self.available_microservices is None:
-            self.available_microservices = \
-                self.microservice.list_registered_routes().keys()
-            self.__last_available_microservices = datetime.datetime.utcnow()
+        hash_dict = {
+            "context": "pumpwood_flaskviews",
+            "end-point": "get_available_microservices"}
+        cache_data = default_cache.get(hash_dict=hash_dict)
+        if cache_data is not None:
+            return cache_data
         else:
-            now_time = datetime.datetime.utcnow()
-            time_since_update = now_time - self.__last_available_microservices
-            if datetime.timedelta(hours=1) < time_since_update:
-                self.available_microservices = \
-                    self.microservice.list_registered_routes().keys()
-        return self.available_microservices
+            available_microservices = \
+                self.microservice.list_registered_routes().keys()
+            default_cache.set(
+                hash_dict=hash_dict,
+                value=available_microservices,
+                expire=300)
+            return available_microservices
 
     def get_session(self):
         """Ping connection before using database.
