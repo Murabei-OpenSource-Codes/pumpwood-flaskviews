@@ -1803,7 +1803,7 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
         filter_dict = {} if filter_dict is None else filter_dict
         exclude_dict = {} if exclude_dict is None else exclude_dict
         order_by = [] if order_by is None else order_by
-        columns = [] if columns is None else order_by
+        columns = [] if columns is None else columns
         self.get_session()
 
         model_variables = variables or self.model_variables
