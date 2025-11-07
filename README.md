@@ -17,8 +17,13 @@ Assist creation of Pumpwood views in Flask.
 This package assist the creation of views in flask using Pumpwood pattern.
 
 # Enviroment variables
-- **PUMPWOOD_FLASKVIEWS__INFO_CACHE_TIMEOUT:** Default to 10 minutes
-- **PUMPWOOD_FLASKVIEWS__SERIALIZER_FK_CACHE_TIMEOUT:**
+- **PUMPWOOD_FLASKVIEWS__INFO_CACHE_TIMEOUT (int):** Default to 10 minutes (600),
+  this cache timeout is used for some how static information on the system such
+  as description of the fields and it's components
+- **PUMPWOOD_FLASKVIEWS__SERIALIZER_FK_CACHE_TIMEOUT (int):** Default to 5
+  minutes (300), this cache timeout is used to reduce microservice call to
+  bring foreign_key objects that might be present on other services on retrieve
+  and list calls. Used on `MicroserviceForeignKeyField` field.
 
 ## pumpwood_flaskviews.action
 Expose models functions at the API. It is possible to expose normal and
