@@ -16,6 +16,10 @@ Assist creation of Pumpwood views in Flask.
 # Description
 This package assist the creation of views in flask using Pumpwood pattern.
 
+# Enviroment variables
+- **PUMPWOOD_FLASKVIEWS__INFO_CACHE_TIMEOUT:** Default to 10 minutes
+- **PUMPWOOD_FLASKVIEWS__SERIALIZER_FK_CACHE_TIMEOUT:**
+
 ## pumpwood_flaskviews.action
 Expose models functions at the API. It is possible to expose normal and
 classmethods, the first argument for each one should respect the convention
