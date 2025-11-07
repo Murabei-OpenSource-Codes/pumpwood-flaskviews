@@ -4,6 +4,8 @@ from marshmallow import fields
 from pumpwood_communication import exceptions
 from pumpwood_communication.serializers import CompositePkBase64Converter
 from pumpwood_communication.microservices import PumpWoodMicroService
+from pumpwood_flaskviews.config import (
+    SERIALIZER_FK_CACHE_TIMEOUT)
 
 
 class MicroserviceForeignKeyField(fields.Field):
@@ -108,7 +110,8 @@ class MicroserviceForeignKeyField(fields.Field):
         try:
             object_data = self.microservice.list_one(
                 model_class=self.model_class, pk=object_pk,
-                fields=self.fields, use_disk_cache=True)
+                fields=self.fields, use_disk_cache=True,
+                disk_cache_expire=SERIALIZER_FK_CACHE_TIMEOUT)
         except exceptions.PumpWoodObjectDoesNotExist:
             return {
                 "model_class": self.model_class,

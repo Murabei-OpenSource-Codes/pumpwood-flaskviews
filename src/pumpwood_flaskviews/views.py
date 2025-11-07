@@ -32,7 +32,7 @@ from pumpwood_flaskviews.action import load_action_parameters
 from pumpwood_i8n.singletons import pumpwood_i8n as _
 from pumpwood_database_error import (
     TreatPsycopg2Error, TreatSQLAlchemyError)
-from pumpwood_flaskviews.config import PUMPWOOD_FLASKVIEWS__INFO_CACHE_TIMEOUT
+from pumpwood_flaskviews.config import INFO_CACHE_TIMEOUT
 
 
 def _model_has_column(model, column: str):
@@ -195,7 +195,7 @@ class PumpWoodFlaskView(View):
             default_cache.set(
                 hash_dict=hash_dict,
                 value=available_microservices,
-                expire=PUMPWOOD_FLASKVIEWS__INFO_CACHE_TIMEOUT)
+                expire=INFO_CACHE_TIMEOUT)
             return available_microservices
 
     def get_session(self):
@@ -1624,7 +1624,7 @@ class PumpWoodFlaskView(View):
         default_cache.set(
             hash_dict=hash_dict,
             value=dict_columns,
-            expire=PUMPWOOD_FLASKVIEWS__INFO_CACHE_TIMEOUT)
+            expire=INFO_CACHE_TIMEOUT)
         return dict_columns
 
     def search_options(self):
