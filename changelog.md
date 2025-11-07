@@ -17,6 +17,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - No changes.
 
+## [1.3.28] - 2025-10-31
+### Added
+- No add cache to informational end-point.
+- Create a `config.py` file to centralize configurations using environment
+  variables.
+
+### Fix
+- No fix.
+
+### Changed
+- No changes.
+
 ## [1.3.24] - 2025-10-31
 ### Added
 - No adds.
