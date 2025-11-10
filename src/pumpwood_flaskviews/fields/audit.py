@@ -60,6 +60,9 @@ class CreatedByIdField(fields.Integer):
     """Use auth class to retrieve autenticated user and set it's id.
 
     It will set the authenticated user at object creation.
+
+    This field will alway consider `allow_none=True` and `dump_only=False`.
+    Default is set as a message used at fill options.
     """
 
     pumpwood_read_only = True
@@ -94,6 +97,9 @@ class ModifiedByIdField(fields.Integer):
     """Use auth class to retrieve autenticated user and set it's id.
 
     It will set the authenticated user at object update.
+
+    This field will alway consider `allow_none=True` and `dump_only=False`.
+    Default is set as a message used at fill options.
     """
     pumpwood_read_only = True
     """Used on view to retrieve if field is read only for pumpwood."""
@@ -123,7 +129,11 @@ class ModifiedByIdField(fields.Integer):
 
 
 class CreatedAtField(fields.DateTime):
-    """Set the time the object was created."""
+    """Set the time the object was created.
+
+    This field will alway consider `allow_none=True` and `dump_only=False`.
+    Default is set as a message used at fill options.
+    """
 
     pumpwood_read_only = True
     """Used on view to retrieve if field is read only for pumpwood."""
@@ -151,7 +161,11 @@ class CreatedAtField(fields.DateTime):
 
 
 class ModifiedAtField(fields.DateTime):
-    """Set the time the object was updated."""
+    """Set the time the object was updated.
+
+    This field will alway consider `allow_none=True` and `dump_only=False`.
+    Default is set as a message used at fill options.
+    """
 
     pumpwood_read_only = True
     """Used on view to retrieve if field is read only for pumpwood."""
