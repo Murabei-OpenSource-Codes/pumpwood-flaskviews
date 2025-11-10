@@ -1,6 +1,6 @@
-Metadata-Version: 2.2
+Metadata-Version: 2.4
 Name: pumpwood-flaskviews
-Version: 1.3.30
+Version: 1.3.33
 Summary: Assist creation of flask views in Pumpwood format..
 Home-page: https://github.com/Murabei-OpenSource-Codes/pumpwood-flaskviews
 Author: Murabei Data Science
@@ -29,6 +29,7 @@ Dynamic: description
 Dynamic: description-content-type
 Dynamic: home-page
 Dynamic: license
+Dynamic: license-file
 Dynamic: requires-dist
 Dynamic: requires-python
 Dynamic: summary
@@ -50,6 +51,15 @@ Assist creation of Pumpwood views in Flask.
 
 # Description
 This package assist the creation of views in flask using Pumpwood pattern.
+
+# Enviroment variables
+- **PUMPWOOD_FLASKVIEWS__INFO_CACHE_TIMEOUT (int):** Default to 10 minutes (600),
+  this cache timeout is used for some how static information on the system such
+  as description of the fields and it's components
+- **PUMPWOOD_FLASKVIEWS__SERIALIZER_FK_CACHE_TIMEOUT (int):** Default to 5
+  minutes (300), this cache timeout is used to reduce microservice call to
+  bring foreign_key objects that might be present on other services on retrieve
+  and list calls. Used on `MicroserviceForeignKeyField` field.
 
 ## pumpwood_flaskviews.action
 Expose models functions at the API. It is possible to expose normal and
