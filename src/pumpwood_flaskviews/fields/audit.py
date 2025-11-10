@@ -119,7 +119,6 @@ class ModifiedByIdField(fields.Integer):
         current_user = AuthFactory.retrieve_authenticated_user()
         overwrited_data = _get_overwrite_audit(
             field=self, data=data, current_user=current_user)
-        print('overwrited_data:', overwrited_data)
         if overwrited_data is not missing:
             return overwrited_data
 

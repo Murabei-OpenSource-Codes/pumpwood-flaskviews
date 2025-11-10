@@ -60,6 +60,9 @@ class CreatedByIdField(fields.Integer):
     """Use auth class to retrieve autenticated user and set it's id.
 
     It will set the authenticated user at object creation.
+
+    This field will alway consider `allow_none=True` and `dump_only=False`.
+    Default is set as a message used at fill options.
     """
 
     pumpwood_read_only = True
@@ -94,6 +97,9 @@ class ModifiedByIdField(fields.Integer):
     """Use auth class to retrieve autenticated user and set it's id.
 
     It will set the authenticated user at object update.
+
+    This field will alway consider `allow_none=True` and `dump_only=False`.
+    Default is set as a message used at fill options.
     """
     pumpwood_read_only = True
     """Used on view to retrieve if field is read only for pumpwood."""
@@ -113,7 +119,6 @@ class ModifiedByIdField(fields.Integer):
         current_user = AuthFactory.retrieve_authenticated_user()
         overwrited_data = _get_overwrite_audit(
             field=self, data=data, current_user=current_user)
-        print('overwrited_data:', overwrited_data)
         if overwrited_data is not missing:
             return overwrited_data
 
@@ -123,7 +128,11 @@ class ModifiedByIdField(fields.Integer):
 
 
 class CreatedAtField(fields.DateTime):
-    """Set the time the object was created."""
+    """Set the time the object was created.
+
+    This field will alway consider `allow_none=True` and `dump_only=False`.
+    Default is set as a message used at fill options.
+    """
 
     pumpwood_read_only = True
     """Used on view to retrieve if field is read only for pumpwood."""
@@ -151,7 +160,11 @@ class CreatedAtField(fields.DateTime):
 
 
 class ModifiedAtField(fields.DateTime):
-    """Set the time the object was updated."""
+    """Set the time the object was updated.
+
+    This field will alway consider `allow_none=True` and `dump_only=False`.
+    Default is set as a message used at fill options.
+    """
 
     pumpwood_read_only = True
     """Used on view to retrieve if field is read only for pumpwood."""
