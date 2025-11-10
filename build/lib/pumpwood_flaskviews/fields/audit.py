@@ -68,6 +68,7 @@ class CreatedByIdField(fields.Integer):
     def __init__(self, *args, **kwargs):
         """__init__."""
         kwargs['allow_none'] = True
+        kwargs['dump_only'] = False
         kwargs['default'] = 'Logged user at creation'
         super().__init__(*args, **kwargs)
 
@@ -100,6 +101,7 @@ class ModifiedByIdField(fields.Integer):
     def __init__(self, *args, **kwargs):
         """__init__."""
         kwargs['allow_none'] = True
+        kwargs['dump_only'] = False
         kwargs['default'] = 'Logged user at update'
         super().__init__(*args, **kwargs)
 
@@ -111,10 +113,12 @@ class ModifiedByIdField(fields.Integer):
         current_user = AuthFactory.retrieve_authenticated_user()
         overwrited_data = _get_overwrite_audit(
             field=self, data=data, current_user=current_user)
+        print('overwrited_data:', overwrited_data)
         if overwrited_data is not missing:
             return overwrited_data
 
         # Return logged user
+        print("current_user['pk']:", current_user['pk'])
         return current_user['pk']
 
 
@@ -127,6 +131,7 @@ class CreatedAtField(fields.DateTime):
     def __init__(self, *args, **kwargs):
         """__init__."""
         kwargs['allow_none'] = True
+        kwargs['dump_only'] = False
         kwargs['default'] = 'Datetime at creation'
         super().__init__(*args, **kwargs)
 
@@ -154,6 +159,7 @@ class ModifiedAtField(fields.DateTime):
     def __init__(self, *args, **kwargs):
         """__init__."""
         kwargs['allow_none'] = True
+        kwargs['dump_only'] = False
         kwargs['default'] = 'Datetime at update'
         super().__init__(*args, **kwargs)
 
