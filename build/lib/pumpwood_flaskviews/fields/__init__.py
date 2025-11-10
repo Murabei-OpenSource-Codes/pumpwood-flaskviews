@@ -1,6 +1,6 @@
 """Module for definition of custom Pumpwood Fields."""
 from .audit import (
-    CreatedByIdField, UpdatedByIdField, CreatedAtField, UpdatedAtField)
+    CreatedByIdField, ModifiedByIdField, CreatedAtField, ModifiedAtField)
 from .general import (
     GeometryField, ChoiceField, PrimaryKeyField)
 from .microservice import (
@@ -9,7 +9,7 @@ from .encrypt import EncryptedField
 
 
 __all__ = [
-    CreatedByIdField, UpdatedByIdField, CreatedAtField, UpdatedAtField,
+    CreatedByIdField, ModifiedByIdField, CreatedAtField, ModifiedAtField,
     GeometryField, ChoiceField, PrimaryKeyField,
     MicroserviceForeignKeyField, MicroserviceRelatedField,
     EncryptedField]
