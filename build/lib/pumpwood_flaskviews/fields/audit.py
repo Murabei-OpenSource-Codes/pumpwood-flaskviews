@@ -123,7 +123,6 @@ class ModifiedByIdField(fields.Integer):
             return overwrited_data
 
         # Return logged user
-        print("current_user['pk']:", current_user['pk'])
         return current_user['pk']
 
 
