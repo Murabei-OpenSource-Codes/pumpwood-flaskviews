@@ -1,9 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-auth.py.
-
-Gatter functions used in authentication of the API.
-"""
+"""Classes and function for authetication and permission."""
 import urllib.parse
 import requests
 from loguru import logger
@@ -11,6 +7,10 @@ from flask import request as flask_request
 from flask import g
 from pumpwood_communication import exceptions
 from pumpwood_communication.cache import default_cache
+from pumpwood_flaskviews.config import MICROSERVICE_URL
+
+AUTH_CHECK_URL = urllib.parse.urljoin(
+    MICROSERVICE_URL, 'rest/registration/check/')
 
 
 class AuthFactory:
@@ -38,19 +38,18 @@ class AuthFactory:
         >>>     ....
 
     """
-
+    server_url = MICROSERVICE_URL
     auth_check_url = None
     """Url that will be used to check if user is logged and if it has the right
        permissions"""
-    server_url = None
     dummy_auth = False
 
     @classmethod
     def set_server_url(cls, server_url: str = None):
         """Set server url after inicialization."""
-        cls.server_url = server_url
-        cls.auth_check_url = urllib.parse.urljoin(
-            server_url, 'rest/registration/check/')
+        logger.warning(
+            "Use of set_server_url at app startup is deprected, instead use "
+            "`MICROSERVICE_URL` env variable")
 
     @classmethod
     def set_as_dummy(cls):

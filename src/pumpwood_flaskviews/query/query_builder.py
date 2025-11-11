@@ -2,7 +2,7 @@
 import copy
 import numpy as np
 import pandas as pd
-import flask_sqlalchemy
+from flask_sqlalchemy.query import Query
 from sqlalchemy.sql import operators
 from sqlalchemy import func
 from sqlalchemy import inspect
@@ -358,7 +358,8 @@ class SqlalchemyQueryMisc():
             'columns': columns_values_filter}
 
     @classmethod
-    def sqlalchemy_kward_query(cls, object_model, filter_dict: dict = {},
+    def sqlalchemy_kward_query(cls, object_model, base_query: Query,
+                               filter_dict: dict = {},
                                exclude_dict: dict = {},
                                order_by: list[str] = []):
         """Build SQLAlchemy engine string according to database parameters.
@@ -366,6 +367,9 @@ class SqlalchemyQueryMisc():
         Args:
             object_model:
                 SQLAlchemy declarative model.
+            base_query (Query):
+                Base query used to filter row permission and other
+                custom filters.
             filter_dict (dict):
                 Dictionary to be used in filtering.
             exclude_dict (dict):
@@ -416,7 +420,7 @@ class SqlalchemyQueryMisc():
             order_query['models'])
 
         # Join models for filters
-        q = object_model.query
+        q = base_query
         for join_models in models:
             q = q.join(join_models[0], join_models[1])
 
@@ -433,7 +437,7 @@ class SqlalchemyQueryMisc():
 
     @classmethod
     def aggregate(cls, session, object_model,
-                  query: flask_sqlalchemy.query.Query, group_by: list[str],
+                  query: Query, group_by: list[str],
                   agg: dict, order_by: list[str] = []):
         """Aggregate results using group_by and agg.
 
