@@ -65,9 +65,17 @@ class PumpWoodDimensionsFlaskView(PumpWoodFlaskView):
         to_function_dict['filter_dict'] = filter_dict
         to_function_dict['exclude_dict'] = exclude_dict
 
-        query_string = SqlalchemyQueryMisc.sqlalchemy_kward_query(
-            **to_function_dict).statement.compile(
-                compile_kwargs={"literal_binds": True}).string
+        # Limit access to data
+        base_query = self.base_query()
+        query_string = SqlalchemyQueryMisc\
+            .sqlalchemy_kward_query(
+                object_model=self.model_class,
+                base_query=base_query,
+                filter_dict=filter_dict,
+                exclude_dict=exclude_dict)\
+                .statement.compile(compile_kwargs={"literal_binds": True})\
+                .string
+
         sql_statement = """
             SELECT DISTINCT jsonb_object_keys(dimensions) AS keys
             FROM (
@@ -96,16 +104,18 @@ class PumpWoodDimensionsFlaskView(PumpWoodFlaskView):
             List of the avaiable values for key dimention.
         """
         self.get_session()
-        to_function_dict = {}
-        to_function_dict['object_model'] = self.model_class
-        if filter_dict is not None:
-            to_function_dict["filter_dict"] = filter_dict
-        if exclude_dict is not None:
-            to_function_dict["exclude_dict"] = exclude_dict
 
-        query_string = SqlalchemyQueryMisc.sqlalchemy_kward_query(
-            **to_function_dict).statement.compile(
-                compile_kwargs={"literal_binds": True}).string
+        # Use base query to filter user access to data according to
+        # row permission
+        base_query = self.base_query()
+        query_string = SqlalchemyQueryMisc\
+            .sqlalchemy_kward_query(
+                object_model=self.model_class,
+                base_query=base_query,
+                filter_dict=filter_dict,
+                exclude_dict=exclude_dict)\
+                .statement.compile(compile_kwargs={"literal_binds": True})\
+                .string
 
         sql_statement = """
             SELECT DISTINCT dimensions -> '{key}' AS value

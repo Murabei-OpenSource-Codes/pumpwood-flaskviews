@@ -358,7 +358,7 @@ class SqlalchemyQueryMisc():
             'columns': columns_values_filter}
 
     @classmethod
-    def sqlalchemy_kward_query(cls, object_model, base_query: Query,
+    def sqlalchemy_kward_query(cls, object_model, base_query: Query = None,
                                filter_dict: dict = {},
                                exclude_dict: dict = {},
                                order_by: list[str] = []):
@@ -420,7 +420,7 @@ class SqlalchemyQueryMisc():
             order_query['models'])
 
         # Join models for filters
-        q = base_query
+        q = base_query or object_model.query
         for join_models in models:
             q = q.join(join_models[0], join_models[1])
 

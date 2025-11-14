@@ -44,37 +44,33 @@ class PumpWoodFlaskView(View):
     _view_type = "simple"
     _primary_keys = None
 
-    #####################
-    # Route information #
+    # Route descriptions
     description = None
+    """Description used to register route at auth service."""
     dimensions = {}
+    """Dimensions used to tag route at auth service."""
     icon = None
-    #####################
+    """Icon name that may be used on frontend for service routes."""
 
     CHUNK_SIZE = 4096
+    """File upload/download chuck size."""
 
-    # Database connection
     db = None
+    """Database connection."""
 
-    # SQLAlchemy model
     model_class = None
+    """SQLAlchemy model."""
 
-    # Marshmellow serializer
     serializer = None
+    """Marshmellow serializer used at model end-points."""
 
-    # List of the fields that will be returned by default on list requests
-    list_fields = None
-
-    # Dict with the foreign key to other models, it does not ensure consistency
-    # it will be avaiable on routes model and at fill_options for
-    # documentation
-    foreign_keys = {}
-    relationships = {}
-
-    # Set file fields that are on model, it is a dictionary with key as the
-    # column name and values as lists of the extensions that will be permitted
-    # on field, '*' will allow any type of file
     file_fields = {}
+    """Fields that are considered files.
+
+    Set file fields that are on model, it is a dictionary with key as the
+    column name and values as lists of the extensions that will be permitted
+    on field, '*' will allow any type of file
+    """
 
     # File path on storage will be '{model_class}__{field}/', setting this
     # attribute will change de behavior to '{file_folder}__{field}/'
@@ -95,16 +91,12 @@ class PumpWoodFlaskView(View):
     # or even query hanging without finishing. If this variable is set it will
     # not allow flat_list_by_chunks queries on PumpwoodCommunication without
     # setting at least the first partition as equal or in filter.
-    table_partition = []
+    table_partition: list[str] = []
 
     # Front-end uses 50 as limit to check if all data have been fetched,
     # if change this parameter, be sure to update front-end list component.
-    list_paginate_limit = 50
+    list_paginate_limit: int = 50
     methods = ['GET', 'POST', 'DELETE', 'PUT']
-
-    # List available micro services
-    __last_available_microservices = None
-    available_microservices = None
 
     # GUI attributes
     gui_retrieve_fieldset: dict = None
@@ -131,7 +123,8 @@ class PumpWoodFlaskView(View):
         serializer_obj = self.serializer()
         return serializer_obj.get_list_fields()
 
-    def base_query(self):
+    @classmethod
+    def base_query(cls):
         """Create base query applying row permission filter.
 
         This function can be overided to add new funcionalities and filters
@@ -141,7 +134,7 @@ class PumpWoodFlaskView(View):
             Return a sqlalchemy query with applied base filters.
         """
         return BaseQuery\
-            .row_permission_filter(model=self.model_class)
+            .row_permission_filter(model=cls.model_class)
 
     @classmethod
     def _extract_primary_keys(cls,
@@ -233,7 +226,19 @@ class PumpWoodFlaskView(View):
             Returns a SQLAlchemy object with corresponding primary key.
         """
         converted_pk = CompositePkBase64Converter.load(pk)
-        model_object = cls.model_class.query.get(converted_pk)
+        if isinstance(converted_pk, (int, float)):
+            # If a numeric data is passed as pk it is associated with
+            # 'id' field, it is necessary to convert to a dict to unpack
+            # on filter_by
+            converted_pk = {'id': converted_pk}
+
+        # Use base query to filter object acording to user's permission
+        base_query = cls.base_query()
+
+        # Since base query inject a filter retricting user information
+        # it is not possible to use .get
+        model_object = base_query\
+            .filter_by(**converted_pk).one()
         return model_object
 
     @classmethod
@@ -609,6 +614,8 @@ class PumpWoodFlaskView(View):
                 exclude_dict["deleted"] = True
 
         list_paginate_limit = limit or self.list_paginate_limit
+
+        # Use base query to limit user access
         base_query = self.base_query()
         query_result = SqlalchemyQueryMisc\
             .sqlalchemy_kward_query(
@@ -627,8 +634,8 @@ class PumpWoodFlaskView(View):
 
     def list_without_pag(self, filter_dict: None | dict = None,
                          exclude_dict: dict = None, order_by: list = None,
-                        fields: list = None, default_fields: bool = False,
-                        foreign_key_fields: bool = False, **kwargs) -> list:
+                         fields: list = None, default_fields: bool = False,
+                         foreign_key_fields: bool = False, **kwargs) -> list:
         """Return query without pagination.
 
         Args:
@@ -678,14 +685,17 @@ class PumpWoodFlaskView(View):
             if not any_delete:
                 exclude_dict["deleted"] = True
 
-        to_function_dict = {}
-        to_function_dict['object_model'] = self.model_class
-        to_function_dict['filter_dict'] = filter_dict
-        to_function_dict['exclude_dict'] = exclude_dict
-        to_function_dict['order_by'] = order_by
+        # Use base query to filter object associated with user's
+        base_query = self.base_query()
+        query_result = SqlalchemyQueryMisc\
+            .sqlalchemy_kward_query(
+                object_model=self.model_class,
+                base_query=base_query,
+                filter_dict=filter_dict,
+                exclude_dict=exclude_dict,
+                order_by=order_by)\
+            .all()
 
-        query_result = SqlalchemyQueryMisc.sqlalchemy_kward_query(
-            **to_function_dict).all()
         list_serializer = self.serializer(
             many=True, fields=fields, default_fields=default_fields,
             foreign_key_fields=foreign_key_fields,
@@ -974,14 +984,18 @@ class PumpWoodFlaskView(View):
         """
         session = self.get_session()
         try:
-            to_function_dict = {}
-            to_function_dict['object_model'] = self.model_class
-            to_function_dict['filter_dict'] = filter_dict
-            to_function_dict['exclude_dict'] = exclude_dict
-            query_result = SqlalchemyQueryMisc.sqlalchemy_kward_query(
-                **to_function_dict)
+            # User will only be abble to delete objects associated with his
+            # row permission
+            base_query = self.base_query()
+            query_result = SqlalchemyQueryMisc\
+                .sqlalchemy_kward_query(
+                    object_model=self.model_class,
+                    base_query=base_query,
+                    filter_dict=filter_dict,
+                    exclude_dict=exclude_dict)
             query_result.delete(synchronize_session='fetch')
             session.commit()
+
         except Exception as e:
             session.rollback()
             raise e
@@ -1044,6 +1058,7 @@ class PumpWoodFlaskView(View):
             # persist on database.
             session.add(to_save_obj)
             session.flush()
+
         except Exception as e:
             session.rollback()
             raise e
@@ -1404,14 +1419,15 @@ class PumpWoodFlaskView(View):
             if not any_delete:
                 exclude_dict["deleted"] = True
 
-        to_function_dict = {}
-        to_function_dict['object_model'] = self.model_class
-        to_function_dict['filter_dict'] = filter_dict
-        to_function_dict['exclude_dict'] = exclude_dict
+        base_query = self.base_query()
+        subquery_result = SqlalchemyQueryMisc\
+            .sqlalchemy_kward_query(
+                object_model=self.model_class,
+                base_query=base_query,
+                filter_dict=filter_dict,
+                exclude_dict=exclude_dict)\
+            .all()
 
-        subquery_result = SqlalchemyQueryMisc.sqlalchemy_kward_query(
-            object_model=self.model_class, filter_dict=filter_dict,
-            exclude_dict=exclude_dict)
         pd_results = pd.DataFrame(
             SqlalchemyQueryMisc.aggregate(
                 session=session, object_model=self.model_class,

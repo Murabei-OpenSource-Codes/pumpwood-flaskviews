@@ -9,6 +9,7 @@ from pumpwood_communication import exceptions
 from pumpwood_communication.cache import default_cache
 from pumpwood_flaskviews.config import MICROSERVICE_URL
 
+
 AUTH_CHECK_URL = urllib.parse.urljoin(
     MICROSERVICE_URL, 'rest/registration/check/')
 
@@ -39,7 +40,7 @@ class AuthFactory:
 
     """
     server_url = MICROSERVICE_URL
-    auth_check_url = None
+    auth_check_url = AUTH_CHECK_URL
     """Url that will be used to check if user is logged and if it has the right
        permissions"""
     dummy_auth = False
@@ -181,7 +182,6 @@ class AuthFactory:
         user_response = requests.get(url, headers=headers, timeout=60)
         if user_response.status_code != 200:
             raise exceptions.PumpWoodUnauthorized('Token autorization failed')
-
         return user_response.json()
 
     @classmethod

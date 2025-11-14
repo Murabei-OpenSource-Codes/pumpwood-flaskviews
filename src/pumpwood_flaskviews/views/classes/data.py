@@ -115,13 +115,15 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
                 if (pk_col not in model_variables):
                     model_variables = [pk_col] + model_variables
 
-        to_function_dict = {}
-        to_function_dict['object_model'] = self.model_class
-        to_function_dict['filter_dict'] = filter_dict
-        to_function_dict['exclude_dict'] = exclude_dict
-        to_function_dict['order_by'] = order_by
-        query = SqlalchemyQueryMisc.sqlalchemy_kward_query(
-            **to_function_dict)
+        # Use base query to limit user access
+        base_query = self.base_query()
+        query = SqlalchemyQueryMisc\
+            .sqlalchemy_kward_query(
+                object_model=self.model_class,
+                base_query=base_query,
+                filter_dict=filter_dict,
+                exclude_dict=exclude_dict,
+                order_by=order_by)
 
         # Limit results to help on pagination
         if limit is not None:

@@ -43,7 +43,7 @@ def _get_overwrite_audit(field: fields.Field, data: dict,
         is_superuser = current_user.get('is_superuser', False)
         if not is_superuser:
             msg = (
-                "User is truing to overwrite an audit field [{json_key}], "
+                "User is trying to overwrite an audit field [{json_key}], "
                 "using [{overwrite_key}] entry, but does not have associated "
                 "permissions")
             raise PumpWoodForbidden(
