@@ -12,22 +12,25 @@ from flask import request, Response
 from flask import jsonify, send_file
 from werkzeug.utils import secure_filename
 from loguru import logger
-from sqlalchemy import inspect as alchemy_inspect
-from sqlalchemy_utils.types.choice import ChoiceType
+from flask_sqlalchemy.query import Query
 from sqlalchemy.sql import text
+from sqlalchemy import inspect as alchemy_inspect
 from sqlalchemy.sql.functions import GenericFunction
 from sqlalchemy.sql.schema import Sequence, UniqueConstraint
 from sqlalchemy.sql.expression import False_ as sql_false
 from sqlalchemy.sql.expression import True_ as sql_true
+from sqlalchemy_utils.types.choice import ChoiceType
 from geoalchemy2.types import Geometry
 from marshmallow import missing
 from pumpwood_communication import exceptions
+from pumpwood_communication.microservices import PumpWoodMicroService
 from pumpwood_communication.serializers import CompositePkBase64Converter
 from pumpwood_communication.cache import default_cache
 
 # Flask view
 from pumpwood_flaskviews.inspection import model_has_column
-from pumpwood_flaskviews.query import SqlalchemyQueryMisc, BaseQuery
+from pumpwood_flaskviews.query import (
+    SqlalchemyQueryMisc, BaseQueryABC, BaseQueryNoFilter)
 from pumpwood_flaskviews.auth import AuthFactory
 from pumpwood_flaskviews.action import load_action_parameters
 from pumpwood_flaskviews.config import INFO_CACHE_TIMEOUT
@@ -41,70 +44,84 @@ class PumpWoodFlaskView(View):
     microsservice.
     """
 
-    _view_type = "simple"
-    _primary_keys = None
+    methods = ['GET', 'POST', 'DELETE', 'PUT']
+    """Methods allowed on flask view."""
 
-    # Route descriptions
-    description = None
-    """Description used to register route at auth service."""
-    dimensions = {}
-    """Dimensions used to tag route at auth service."""
-    icon = None
-    """Icon name that may be used on frontend for service routes."""
-
-    CHUNK_SIZE = 4096
+    CHUNK_SIZE: int = 4096
     """File upload/download chuck size."""
 
+    _view_type = "simple"
+    """Type of the view, this will be used to mark route type on route
+       registration at auth app."""
+    _primary_keys: list[str] = None
+    """This field will be populated at the route registration, it will inspect
+       object and verify if primary key is composite."""
+
+    # These attribute must be set on class definition
+    description: str = None
+    """Description used to register route at auth service."""
+    dimensions: dict[str, str] = {}
+    """Dimensions used to tag route at auth service."""
     db = None
     """Database connection."""
-
     model_class = None
     """SQLAlchemy model."""
-
     serializer = None
     """Marshmellow serializer used at model end-points."""
+    storage_object = None
+    """PumpwoodStorage object, if not set file end-point will be disabled and
+       will raise an error."""
+    microservice: PumpWoodMicroService = None
+    """PumpwoodMicroservice object."""
 
-    file_fields = {}
+    # Optional attributes
+    icon: str = None
+    """Icon name that may be used on frontend for service routes."""
+    file_fields: dict[str, list[str]] = {}
     """Fields that are considered files.
 
     Set file fields that are on model, it is a dictionary with key as the
     column name and values as lists of the extensions that will be permitted
     on field, '*' will allow any type of file
     """
+    file_folder: str = None
+    """File path on storage will be '{model_class}__{field}/', setting this
+       attribute will change de behavior to '{file_folder}__{field}/'"""
+    broadcast: bool = True
+    """Set if save, delete, action end-points will broadcast to ETL
+       microservice if present."""
+    base_query: BaseQueryABC = BaseQueryNoFilter()
+    """A base query object from `BaseQueryABC` class.
 
-    # File path on storage will be '{model_class}__{field}/', setting this
-    # attribute will change de behavior to '{file_folder}__{field}/'
-    file_folder = None
+    `BaseQueryNoFilter` will not apply any filters.
 
-    # PumpwoodStorage object
-    storage_object = None
+    This object will set all end-points default filter of objects, it
+    will be applied to all end-points (retrieve, list, delete, action, ...).
+    It can be used to retrict access to data according to user row_permission
+    or object ownership."""
 
-    # PumpwoodMicroservice object
-    microservice = None
-
-    # Set if save, delete, action end-point must trigger ETL Trigger on
-    # request finish.
-    trigger = True
-
-    # Some large table are partitioned using one or more columns. Fetching
-    # without setting this columns on filters may lead to reduced performance,
-    # or even query hanging without finishing. If this variable is set it will
-    # not allow flat_list_by_chunks queries on PumpwoodCommunication without
-    # setting at least the first partition as equal or in filter.
+    # Query information
     table_partition: list[str] = []
-
-    # Front-end uses 50 as limit to check if all data have been fetched,
-    # if change this parameter, be sure to update front-end list component.
+    """Some large table are partitioned using one or more columns. Fetching
+       without setting this columns on filters may lead to reduced performance,
+       or even query hanging without finishing. If this variable is set it will
+       not allow flat_list_by_chunks queries on PumpwoodCommunication without
+       setting at least the first partition as equal or in filter."""
     list_paginate_limit: int = 50
-    methods = ['GET', 'POST', 'DELETE', 'PUT']
+    """Front-end uses 50 as limit to check if all data have been fetched,
+       if change this parameter, be sure to update front-end list component."""
 
     # GUI attributes
     gui_retrieve_fieldset: dict = None
+    """Help front end to build field sets using a dictionary and lists."""
     gui_verbose_field: str = 'pk'
+    """Sugest a verbose string to represent the object to user."""
     gui_readonly: List[str] = []
+    """Fields that as set as read only on fill options for gui user, but are
+       not set as read-only at serializer. Normally this are fields that are
+       set at internal system process such as async calls."""
 
-    ########################
-    # Get class attributes #
+    # Get class attributes
     def get_gui_retrieve_fieldset(self):
         """Return gui_retrieve_fieldset attribute."""
         # Set pk as verbose field if none is set
@@ -124,18 +141,21 @@ class PumpWoodFlaskView(View):
         return serializer_obj.get_list_fields()
 
     @classmethod
-    def base_query(cls):
-        """Create base query applying row permission filter.
+    def _add_default_filter(cls, query: Query = None):
+        """Add class default filters to query.
 
-        This function can be overided to add new funcionalities and filters
-        to logged user data.
+        This function will use base_query object to add default filters
+        at query results, it can be used to retrict access to data using
+        row_permission or object ownership.
+
+        It is possible to implement custom filter using BaseQueryABC as
+        Inheritance.
 
         Returns:
-            Return a sqlalchemy query with applied base filters.
+            Return a sqlalchemy query with applied default filters.
         """
-        # TODO: Ajust the behavior to use base query objects.
-        return BaseQuery\
-            .row_permission_filter(model=cls.model_class)
+        return cls.base_query\
+            .add_filter(model=cls.model_class, query=query)
 
     @classmethod
     def _extract_primary_keys(cls,
@@ -234,11 +254,12 @@ class PumpWoodFlaskView(View):
             converted_pk = {'id': converted_pk}
 
         # Use base query to filter object acording to user's permission
-        base_query = cls.base_query()
+        tmp_base_query = cls.base_query\
+            .add_filter(model=cls.model_class)
 
         # Since base query inject a filter retricting user information
         # it is not possible to use .get
-        model_object = base_query\
+        model_object = tmp_base_query\
             .filter_by(**converted_pk).one()
         return model_object
 
@@ -617,7 +638,7 @@ class PumpWoodFlaskView(View):
         list_paginate_limit = limit or self.list_paginate_limit
 
         # Use base query to limit user access
-        base_query = self.base_query()
+        base_query = self._add_default_filter()
         query_result = SqlalchemyQueryMisc\
             .sqlalchemy_kward_query(
                 object_model=self.model_class,
@@ -687,7 +708,7 @@ class PumpWoodFlaskView(View):
                 exclude_dict["deleted"] = True
 
         # Use base query to filter object associated with user's
-        base_query = self.base_query()
+        base_query = self._add_default_filter()
         query_result = SqlalchemyQueryMisc\
             .sqlalchemy_kward_query(
                 object_model=self.model_class,
@@ -959,7 +980,8 @@ class PumpWoodFlaskView(View):
 
         available_microservices = self.get_available_microservices()
         pumpwood_etl_ok = 'pumpwood-etl-app' in available_microservices
-        if self.microservice is not None and self.trigger and pumpwood_etl_ok:
+        is_to_broadcast = self.broadcast and pumpwood_etl_ok
+        if self.microservice is not None and is_to_broadcast:
             # Process ETLTrigger for the model class
             self.microservice.login()
             self.microservice.execute_action(
@@ -987,7 +1009,7 @@ class PumpWoodFlaskView(View):
         try:
             # User will only be abble to delete objects associated with his
             # row permission
-            base_query = self.base_query()
+            base_query = self._add_default_filter()
             query_result = SqlalchemyQueryMisc\
                 .sqlalchemy_kward_query(
                     object_model=self.model_class,
@@ -1180,7 +1202,8 @@ class PumpWoodFlaskView(View):
         # Pumpwood ETLTrigger integration #
         available_microservices = self.get_available_microservices()
         pumpwood_etl_ok = 'pumpwood-etl-app' in available_microservices
-        if self.microservice is not None and self.trigger and pumpwood_etl_ok:
+        is_to_broadcast = self.broadcast and pumpwood_etl_ok
+        if self.microservice is not None and is_to_broadcast:
             # Process ETL Trigger for the model class
             self.microservice.login()
             if pk is None:
@@ -1357,16 +1380,17 @@ class PumpWoodFlaskView(View):
 
             # Create a serializer to serialize the object to return the value
             # at the action call
-            temp_serializer = self.serializer(
-                many=False, only=self.list_fields)
-            object_dict = temp_serializer.dump(model_object, many=False)
+            temp_serializer = self.serializer(many=False, default_fields=True)
+            object_dict = temp_serializer\
+                .dump(model_object, many=False)
 
         loaded_parameters = load_action_parameters(action_fun, parameters)
         result = action_fun(**loaded_parameters)
 
         available_microservices = self.get_available_microservices()
         pumpwood_etl_ok = 'pumpwood-etl-app' in available_microservices
-        if self.microservice is not None and self.trigger and pumpwood_etl_ok:
+        is_to_broadcast = (self.broadcast and pumpwood_etl_ok)
+        if self.microservice is not None and is_to_broadcast:
             self.microservice.login()
             self.microservice.execute_action(
                 "ETLTrigger", action="process_triggers", parameters={
@@ -1420,7 +1444,7 @@ class PumpWoodFlaskView(View):
             if not any_delete:
                 exclude_dict["deleted"] = True
 
-        base_query = self.base_query()
+        base_query = self._add_default_filter()
         subquery_result = SqlalchemyQueryMisc\
             .sqlalchemy_kward_query(
                 object_model=self.model_class,

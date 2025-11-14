@@ -1,12 +1,10 @@
-"""Functions and classes to help build PumpWood End-Points."""
+"""Simple pumpwood view."""
 import os
 import io
 import pandas as pd
 import textwrap
 import inspect
 import datetime
-import psycopg2
-import sqlalchemy
 import simplejson as json
 from typing import Any, Union, List
 from flask.views import View
@@ -14,31 +12,29 @@ from flask import request, Response
 from flask import jsonify, send_file
 from werkzeug.utils import secure_filename
 from loguru import logger
-from sqlalchemy import inspect as alchemy_inspect
-from sqlalchemy_utils.types.choice import ChoiceType
+from flask_sqlalchemy.query import Query
 from sqlalchemy.sql import text
+from sqlalchemy import inspect as alchemy_inspect
 from sqlalchemy.sql.functions import GenericFunction
 from sqlalchemy.sql.schema import Sequence, UniqueConstraint
 from sqlalchemy.sql.expression import False_ as sql_false
 from sqlalchemy.sql.expression import True_ as sql_true
+from sqlalchemy_utils.types.choice import ChoiceType
 from geoalchemy2.types import Geometry
-from marshmallow import ValidationError, missing
+from marshmallow import missing
 from pumpwood_communication import exceptions
+from pumpwood_communication.microservices import PumpWoodMicroService
 from pumpwood_communication.serializers import CompositePkBase64Converter
 from pumpwood_communication.cache import default_cache
-from pumpwood_flaskviews.query import SqlalchemyQueryMisc
+
+# Flask view
+from pumpwood_flaskviews.inspection import model_has_column
+from pumpwood_flaskviews.query import (
+    SqlalchemyQueryMisc, BaseQueryABC, BaseQueryNoFilter)
 from pumpwood_flaskviews.auth import AuthFactory
 from pumpwood_flaskviews.action import load_action_parameters
-from pumpwood_i8n.singletons import pumpwood_i8n as _
-from pumpwood_database_error import (
-    TreatPsycopg2Error, TreatSQLAlchemyError)
 from pumpwood_flaskviews.config import INFO_CACHE_TIMEOUT
-
-
-def _model_has_column(model, column: str):
-    """Check if model has column."""
-    mapper = alchemy_inspect(model)
-    return column in mapper.columns
+from pumpwood_i8n.singletons import pumpwood_i8n as _
 
 
 class PumpWoodFlaskView(View):
@@ -48,78 +44,84 @@ class PumpWoodFlaskView(View):
     microsservice.
     """
 
-    _view_type = "simple"
-    _primary_keys = None
-
-    #####################
-    # Route information #
-    description = None
-    dimensions = {}
-    icon = None
-    #####################
-
-    CHUNK_SIZE = 4096
-
-    # Database connection
-    db = None
-
-    # SQLAlchemy model
-    model_class = None
-
-    # Marshmellow serializer
-    serializer = None
-
-    # List of the fields that will be returned by default on list requests
-    list_fields = None
-
-    # Dict with the foreign key to other models, it does not ensure consistency
-    # it will be avaiable on routes model and at fill_options for
-    # documentation
-    foreign_keys = {}
-    relationships = {}
-
-    # Set file fields that are on model, it is a dictionary with key as the
-    # column name and values as lists of the extensions that will be permitted
-    # on field, '*' will allow any type of file
-    file_fields = {}
-
-    # File path on storage will be '{model_class}__{field}/', setting this
-    # attribute will change de behavior to '{file_folder}__{field}/'
-    file_folder = None
-
-    # PumpwoodStorage object
-    storage_object = None
-
-    # PumpwoodMicroservice object
-    microservice = None
-
-    # Set if save, delete, action end-point must trigger ETL Trigger on
-    # request finish.
-    trigger = True
-
-    # Some large table are partitioned using one or more columns. Fetching
-    # without setting this columns on filters may lead to reduced performance,
-    # or even query hanging without finishing. If this variable is set it will
-    # not allow flat_list_by_chunks queries on PumpwoodCommunication without
-    # setting at least the first partition as equal or in filter.
-    table_partition = []
-
-    # Front-end uses 50 as limit to check if all data have been fetched,
-    # if change this parameter, be sure to update front-end list component.
-    list_paginate_limit = 50
     methods = ['GET', 'POST', 'DELETE', 'PUT']
+    """Methods allowed on flask view."""
 
-    # List available micro services
-    __last_available_microservices = None
-    available_microservices = None
+    CHUNK_SIZE: int = 4096
+    """File upload/download chuck size."""
+
+    _view_type = "simple"
+    """Type of the view, this will be used to mark route type on route
+       registration at auth app."""
+    _primary_keys: list[str] = None
+    """This field will be populated at the route registration, it will inspect
+       object and verify if primary key is composite."""
+
+    # These attribute must be set on class definition
+    description: str = None
+    """Description used to register route at auth service."""
+    dimensions: dict[str, str] = {}
+    """Dimensions used to tag route at auth service."""
+    db = None
+    """Database connection."""
+    model_class = None
+    """SQLAlchemy model."""
+    serializer = None
+    """Marshmellow serializer used at model end-points."""
+    storage_object = None
+    """PumpwoodStorage object, if not set file end-point will be disabled and
+       will raise an error."""
+    microservice: PumpWoodMicroService = None
+    """PumpwoodMicroservice object."""
+
+    # Optional attributes
+    icon: str = None
+    """Icon name that may be used on frontend for service routes."""
+    file_fields: dict[str, list[str]] = {}
+    """Fields that are considered files.
+
+    Set file fields that are on model, it is a dictionary with key as the
+    column name and values as lists of the extensions that will be permitted
+    on field, '*' will allow any type of file
+    """
+    file_folder: str = None
+    """File path on storage will be '{model_class}__{field}/', setting this
+       attribute will change de behavior to '{file_folder}__{field}/'"""
+    broadcast: bool = True
+    """Set if save, delete, action end-points will broadcast to ETL
+       microservice if present."""
+    base_query: BaseQueryABC = BaseQueryNoFilter()
+    """A base query object from `BaseQueryABC` class.
+
+    `BaseQueryNoFilter` will not apply any filters.
+
+    This object will set all end-points default filter of objects, it
+    will be applied to all end-points (retrieve, list, delete, action, ...).
+    It can be used to retrict access to data according to user row_permission
+    or object ownership."""
+
+    # Query information
+    table_partition: list[str] = []
+    """Some large table are partitioned using one or more columns. Fetching
+       without setting this columns on filters may lead to reduced performance,
+       or even query hanging without finishing. If this variable is set it will
+       not allow flat_list_by_chunks queries on PumpwoodCommunication without
+       setting at least the first partition as equal or in filter."""
+    list_paginate_limit: int = 50
+    """Front-end uses 50 as limit to check if all data have been fetched,
+       if change this parameter, be sure to update front-end list component."""
 
     # GUI attributes
     gui_retrieve_fieldset: dict = None
+    """Help front end to build field sets using a dictionary and lists."""
     gui_verbose_field: str = 'pk'
+    """Sugest a verbose string to represent the object to user."""
     gui_readonly: List[str] = []
+    """Fields that as set as read only on fill options for gui user, but are
+       not set as read-only at serializer. Normally this are fields that are
+       set at internal system process such as async calls."""
 
-    ########################
-    # Get class attributes #
+    # Get class attributes
     def get_gui_retrieve_fieldset(self):
         """Return gui_retrieve_fieldset attribute."""
         # Set pk as verbose field if none is set
@@ -137,6 +139,23 @@ class PumpWoodFlaskView(View):
         """Return list_fields attribute."""
         serializer_obj = self.serializer()
         return serializer_obj.get_list_fields()
+
+    @classmethod
+    def _add_default_filter(cls, query: Query = None):
+        """Add class default filters to query.
+
+        This function will use base_query object to add default filters
+        at query results, it can be used to retrict access to data using
+        row_permission or object ownership.
+
+        It is possible to implement custom filter using BaseQueryABC as
+        Inheritance.
+
+        Returns:
+            Return a sqlalchemy query with applied default filters.
+        """
+        return cls.base_query\
+            .add_filter(model=cls.model_class, query=query)
 
     @classmethod
     def _extract_primary_keys(cls,
@@ -228,7 +247,20 @@ class PumpWoodFlaskView(View):
             Returns a SQLAlchemy object with corresponding primary key.
         """
         converted_pk = CompositePkBase64Converter.load(pk)
-        model_object = cls.model_class.query.get(converted_pk)
+        if isinstance(converted_pk, (int, float)):
+            # If a numeric data is passed as pk it is associated with
+            # 'id' field, it is necessary to convert to a dict to unpack
+            # on filter_by
+            converted_pk = {'id': converted_pk}
+
+        # Use base query to filter object acording to user's permission
+        tmp_base_query = cls.base_query\
+            .add_filter(model=cls.model_class)
+
+        # Since base query inject a filter retricting user information
+        # it is not possible to use .get
+        model_object = tmp_base_query\
+            .filter_by(**converted_pk).one()
         return model_object
 
     @classmethod
@@ -589,7 +621,7 @@ class PumpWoodFlaskView(View):
         self.get_session()
 
         # Do not display deleted objects
-        if _model_has_column(self.model_class, column='deleted'):
+        if model_has_column(self.model_class, column='deleted'):
             info_msg = 'deleted field detected: model_class[{model_class}]'\
                 .format(model_class=self.model_class.__name__)
             logger.info(info_msg)
@@ -603,15 +635,18 @@ class PumpWoodFlaskView(View):
             if not any_delete:
                 exclude_dict["deleted"] = True
 
-        to_function_dict = {}
-        to_function_dict['object_model'] = self.model_class
-        to_function_dict['filter_dict'] = filter_dict
-        to_function_dict['exclude_dict'] = exclude_dict
-        to_function_dict['order_by'] = order_by
-
         list_paginate_limit = limit or self.list_paginate_limit
-        query_result = SqlalchemyQueryMisc.sqlalchemy_kward_query(
-            **to_function_dict).limit(list_paginate_limit).all()
+
+        # Use base query to limit user access
+        base_query = self._add_default_filter()
+        query_result = SqlalchemyQueryMisc\
+            .sqlalchemy_kward_query(
+                object_model=self.model_class,
+                base_query=base_query,
+                filter_dict=filter_dict,
+                exclude_dict=exclude_dict,
+                order_by=order_by)\
+            .limit(list_paginate_limit).all()
 
         list_serializer = self.serializer(
             many=True, fields=fields, default_fields=default_fields,
@@ -621,8 +656,8 @@ class PumpWoodFlaskView(View):
 
     def list_without_pag(self, filter_dict: None | dict = None,
                          exclude_dict: dict = None, order_by: list = None,
-                        fields: list = None, default_fields: bool = False,
-                        foreign_key_fields: bool = False, **kwargs) -> list:
+                         fields: list = None, default_fields: bool = False,
+                         foreign_key_fields: bool = False, **kwargs) -> list:
         """Return query without pagination.
 
         Args:
@@ -658,7 +693,7 @@ class PumpWoodFlaskView(View):
         self.get_session()
 
         # Do not display deleted objects
-        if _model_has_column(self.model_class, column='deleted'):
+        if model_has_column(self.model_class, column='deleted'):
             info_msg = 'deleted field detected: model_class[{model_class}]'\
                 .format(model_class=self.model_class.__name__)
             logger.info(info_msg)
@@ -672,14 +707,17 @@ class PumpWoodFlaskView(View):
             if not any_delete:
                 exclude_dict["deleted"] = True
 
-        to_function_dict = {}
-        to_function_dict['object_model'] = self.model_class
-        to_function_dict['filter_dict'] = filter_dict
-        to_function_dict['exclude_dict'] = exclude_dict
-        to_function_dict['order_by'] = order_by
+        # Use base query to filter object associated with user's
+        base_query = self._add_default_filter()
+        query_result = SqlalchemyQueryMisc\
+            .sqlalchemy_kward_query(
+                object_model=self.model_class,
+                base_query=base_query,
+                filter_dict=filter_dict,
+                exclude_dict=exclude_dict,
+                order_by=order_by)\
+            .all()
 
-        query_result = SqlalchemyQueryMisc.sqlalchemy_kward_query(
-            **to_function_dict).all()
         list_serializer = self.serializer(
             many=True, fields=fields, default_fields=default_fields,
             foreign_key_fields=foreign_key_fields,
@@ -927,7 +965,7 @@ class PumpWoodFlaskView(View):
         object_dump = temp_serializer.dump(model_object, many=False)
 
         # Remove deleted entries from results
-        has_deleted = _model_has_column(self.model_class, column='deleted')
+        has_deleted = model_has_column(self.model_class, column='deleted')
         if has_deleted and not force_delete:
             model_object.deleted = True
             session.add(model_object)
@@ -942,7 +980,8 @@ class PumpWoodFlaskView(View):
 
         available_microservices = self.get_available_microservices()
         pumpwood_etl_ok = 'pumpwood-etl-app' in available_microservices
-        if self.microservice is not None and self.trigger and pumpwood_etl_ok:
+        is_to_broadcast = self.broadcast and pumpwood_etl_ok
+        if self.microservice is not None and is_to_broadcast:
             # Process ETLTrigger for the model class
             self.microservice.login()
             self.microservice.execute_action(
@@ -968,14 +1007,18 @@ class PumpWoodFlaskView(View):
         """
         session = self.get_session()
         try:
-            to_function_dict = {}
-            to_function_dict['object_model'] = self.model_class
-            to_function_dict['filter_dict'] = filter_dict
-            to_function_dict['exclude_dict'] = exclude_dict
-            query_result = SqlalchemyQueryMisc.sqlalchemy_kward_query(
-                **to_function_dict)
+            # User will only be abble to delete objects associated with his
+            # row permission
+            base_query = self._add_default_filter()
+            query_result = SqlalchemyQueryMisc\
+                .sqlalchemy_kward_query(
+                    object_model=self.model_class,
+                    base_query=base_query,
+                    filter_dict=filter_dict,
+                    exclude_dict=exclude_dict)
             query_result.delete(synchronize_session='fetch')
             session.commit()
+
         except Exception as e:
             session.rollback()
             raise e
@@ -1038,6 +1081,7 @@ class PumpWoodFlaskView(View):
             # persist on database.
             session.add(to_save_obj)
             session.flush()
+
         except Exception as e:
             session.rollback()
             raise e
@@ -1158,7 +1202,8 @@ class PumpWoodFlaskView(View):
         # Pumpwood ETLTrigger integration #
         available_microservices = self.get_available_microservices()
         pumpwood_etl_ok = 'pumpwood-etl-app' in available_microservices
-        if self.microservice is not None and self.trigger and pumpwood_etl_ok:
+        is_to_broadcast = self.broadcast and pumpwood_etl_ok
+        if self.microservice is not None and is_to_broadcast:
             # Process ETL Trigger for the model class
             self.microservice.login()
             if pk is None:
@@ -1335,16 +1380,17 @@ class PumpWoodFlaskView(View):
 
             # Create a serializer to serialize the object to return the value
             # at the action call
-            temp_serializer = self.serializer(
-                many=False, only=self.list_fields)
-            object_dict = temp_serializer.dump(model_object, many=False)
+            temp_serializer = self.serializer(many=False, default_fields=True)
+            object_dict = temp_serializer\
+                .dump(model_object, many=False)
 
         loaded_parameters = load_action_parameters(action_fun, parameters)
         result = action_fun(**loaded_parameters)
 
         available_microservices = self.get_available_microservices()
         pumpwood_etl_ok = 'pumpwood-etl-app' in available_microservices
-        if self.microservice is not None and self.trigger and pumpwood_etl_ok:
+        is_to_broadcast = (self.broadcast and pumpwood_etl_ok)
+        if self.microservice is not None and is_to_broadcast:
             self.microservice.login()
             self.microservice.execute_action(
                 "ETLTrigger", action="process_triggers", parameters={
@@ -1387,7 +1433,7 @@ class PumpWoodFlaskView(View):
         session = self.get_session()
 
         # Do not display deleted objects
-        if _model_has_column(self.model_class, column='deleted'):
+        if model_has_column(self.model_class, column='deleted'):
             exclude_dict_keys = exclude_dict.keys()
             any_delete = False
             for key in exclude_dict_keys:
@@ -1398,14 +1444,15 @@ class PumpWoodFlaskView(View):
             if not any_delete:
                 exclude_dict["deleted"] = True
 
-        to_function_dict = {}
-        to_function_dict['object_model'] = self.model_class
-        to_function_dict['filter_dict'] = filter_dict
-        to_function_dict['exclude_dict'] = exclude_dict
+        base_query = self._add_default_filter()
+        subquery_result = SqlalchemyQueryMisc\
+            .sqlalchemy_kward_query(
+                object_model=self.model_class,
+                base_query=base_query,
+                filter_dict=filter_dict,
+                exclude_dict=exclude_dict)\
+            .all()
 
-        subquery_result = SqlalchemyQueryMisc.sqlalchemy_kward_query(
-            object_model=self.model_class, filter_dict=filter_dict,
-            exclude_dict=exclude_dict)
         pd_results = pd.DataFrame(
             SqlalchemyQueryMisc.aggregate(
                 session=session, object_model=self.model_class,
@@ -1737,393 +1784,3 @@ class PumpWoodFlaskView(View):
             "field_descriptions": fill_options,
             "gui_readonly": gui_readonly
         }
-
-
-class PumpWoodDataFlaskView(PumpWoodFlaskView):
-    """Class view for models that hold data."""
-
-    _view_type = "data"
-
-    model_variables = []
-    expected_cols_bulk_save = []
-
-    def dispatch_request(self, end_point, first_arg=None, second_arg=None):
-        """dispatch_request for view, add pivot end point."""
-        data = None
-        if request.method.lower() in ('post', 'put'):
-            if request.mimetype == 'application/json':
-                data = request.get_json()
-            else:
-                data = request.form.to_dict()
-                for k in data.keys():
-                    data[k] = json.loads(data[k])
-
-        if end_point == 'pivot' and request.method.lower() == 'post':
-            endpoint_dict = data or {}
-            return jsonify(self.pivot(**endpoint_dict))
-
-        if end_point == 'bulk-save' and request.method.lower() == 'post':
-            endpoint_dict = data or []
-            return jsonify(self.bulk_save(data_to_save=data))
-
-        return super(PumpWoodDataFlaskView, self).dispatch_request(
-            end_point, first_arg, second_arg)
-
-    def pivot(self, filter_dict: None | dict = None,
-              exclude_dict: None | dict = None, order_by: None | list = None,
-              columns: None | list = None, format: str = 'list',
-              variables: list = None, show_deleted: bool = False,
-              add_pk_column: bool = False, limit: int = None,
-              **kwargs):
-        """Pivot end-point.
-
-        Args:
-            filter_dict (dict):
-                Dictionary with the arguments to be used in filter.
-            exclude_dict (dict):
-                Dictionary with the arguments to be used in exclude.
-            order_by (list):
-                List of fields to be used in ordering.
-            columns (list):
-                Columns to be used in pivoting
-            format (str):
-                Format to be used in pivot, same argument used in
-                pandas to_dict.
-            variables (list):
-                List of the columns to be returned.
-            show_deleted (bool):
-                If column deleted is available
-                show deleted rows. By default those columns are removed.
-            add_pk_column (bool):
-                Add pk column to the results facilitating
-                the pagination of long dataframes.
-            limit (int):
-                Limit results to limit n rows.
-            **kwargs:
-                For compatibylity of previous versions and super function.
-        """
-        # Set list and dicts in the fuction to no bug with pointers
-        filter_dict = {} if filter_dict is None else filter_dict
-        exclude_dict = {} if exclude_dict is None else exclude_dict
-        order_by = [] if order_by is None else order_by
-        columns = [] if columns is None else columns
-        self.get_session()
-
-        model_variables = variables or self.model_variables
-        if type(columns) is not list:
-            raise exceptions.PumpWoodException(
-                'Columns must be a list of elements.')
-
-        if len(set(columns) - set(model_variables)) != 0:
-            raise exceptions.PumpWoodException(
-                'Column chosen as pivot is not at model variables')
-
-        if format not in ['dict', 'list', 'series', 'split',
-                          'records', 'index']:
-            raise exceptions.PumpWoodException(
-                "Format must be in ['dict','list','series','split'," +
-                "'records','index']")
-
-        # Remove deleted entries from results
-        if _model_has_column(self.model_class, column='deleted'):
-            if not show_deleted:
-                filter_dict["deleted"] = False
-
-        # Add pk/id columns to results
-        if add_pk_column:
-            if len(columns) != 0:
-                msg = (
-                    "Can not add pk column and pivot information, "
-                    "information must be requested on a long format since "
-                    "primary keys together are unique")
-                raise exceptions.PumpWoodException(msg)
-
-            for pk_col in self.get_primary_keys():
-                if (pk_col not in model_variables):
-                    model_variables = [pk_col] + model_variables
-
-        to_function_dict = {}
-        to_function_dict['object_model'] = self.model_class
-        to_function_dict['filter_dict'] = filter_dict
-        to_function_dict['exclude_dict'] = exclude_dict
-        to_function_dict['order_by'] = order_by
-        query = SqlalchemyQueryMisc.sqlalchemy_kward_query(
-            **to_function_dict)
-
-        # Limit results to help on pagination
-        if limit is not None:
-            query = query.limit(limit)
-
-        # Set columns to be returned at query
-        variables_to_return = [
-            col for col in list(alchemy_inspect(self.model_class).c)
-            if col.key in model_variables]
-        melted_data = pd.DataFrame(
-            query.with_entities(*variables_to_return).all())
-
-        if len(columns) == 0:
-            response = melted_data.to_dict(format)
-        elif melted_data.shape[0] == 0:
-            if format == 'records':
-                response = []
-            else:
-                response = {}
-        else:
-            if 'value' not in melted_data.columns:
-                raise exceptions.PumpWoodException(
-                    "'value' column not at melted data, it is not possible"
-                    " to pivot dataframe.")
-            index = list(set(model_variables) - set(columns + ['value']))
-            pivoted_table = pd.pivot_table(
-                melted_data, values='value', index=index,
-                columns=columns)
-            pivoted_table = pivoted_table.where(
-                pd.notna(pivoted_table), None)
-            response = pivoted_table.reset_index().to_dict(format)
-
-        if type(response) is dict:
-            response = {str(k): v for k, v in response.items()}
-        return response
-
-    def bulk_save(self, data_to_save: list):
-        """Bulk save data.
-
-        Args:
-            data_to_save(list): List of dictionaries which must have
-                                self.expected_cols_bulk_save.
-
-        Return:
-            Dictionary with ['saved_count'] for total of saved objects.
-        """
-        session = self.get_session()
-
-        if len(self.expected_cols_bulk_save) == 0:
-            raise exceptions.PumpWoodException('Bulk save not avaiable.')
-
-        session = self.model_class.query.session
-        pd_data_to_save = pd.DataFrame(data_to_save)
-        pd_data_cols = set(list(pd_data_to_save.columns))
-
-        objects_to_load = []
-        if len(set(self.expected_cols_bulk_save) - pd_data_cols) == 0:
-            for d in pd_data_to_save.to_dict("records"):
-                new_obj = self.model_class(**d)
-                objects_to_load.append(new_obj)
-
-            try:
-                session.bulk_save_objects(objects_to_load)
-                session.commit()
-            except Exception as e:
-                session.rollback()
-                raise e
-
-            return {'saved_count': len(objects_to_load)}
-        else:
-            template = 'Expected columns and data columns do not match:' + \
-                '\nExpected columns: {expected}' + \
-                '\nData columns: {data_cols}'
-            raise exceptions.PumpWoodException(
-                message=template, payload={
-                    "expected": list(set(self.expected_cols_bulk_save)),
-                    "data_cols": list(pd_data_cols),
-                })
-
-
-class PumpWoodDimensionsFlaskView(PumpWoodFlaskView):
-    """Class view for models that hold data."""
-
-    _view_type = "dimension"
-
-    def dispatch_request(self, end_point, first_arg=None, second_arg=None):
-        """dispatch_request for view, add pivot end point."""
-        ###########################
-        # Load payload from request
-        data = None
-        if request.method.lower() in ('post', 'put'):
-            if request.mimetype == 'application/json':
-                data = request.get_json()
-            else:
-                data = request.form.to_dict()
-                for k in data.keys():
-                    data[k] = json.loads(data[k])
-
-        if (end_point == 'list-dimensions' and
-                request.method.lower() == 'post'):
-            endpoint_dict = data or {}
-            return jsonify(self.list_dimensions(**endpoint_dict))
-
-        if (end_point == 'list-dimension-values' and
-                request.method.lower() == 'post'):
-            endpoint_dict = data or {}
-            if "key" not in endpoint_dict.keys():
-                raise exceptions.PumpWoodException(
-                    "Dimention key must be passed as post payload "
-                    "{key: [value]}")
-            return jsonify(self.list_dimension_values(**endpoint_dict))
-
-        return super(PumpWoodDimensionsFlaskView, self).dispatch_request(
-            end_point, first_arg, second_arg)
-
-    def list_dimensions(self, filter_dict: dict = {},
-                        exclude_dict: dict = {}) -> list:
-        """List dimensions avaiable using query.
-
-        Args:
-            filter_dict : dict
-                Filter query dict to get avaiable dimensions.
-            exclude_dict : dict
-                Exclude query dict to get avaiable dimensions.
-
-        Returns:
-            List of the avaiable keys on dimensions database.
-        """
-        self.get_session()
-        to_function_dict = {}
-        to_function_dict['object_model'] = self.model_class
-        to_function_dict['filter_dict'] = filter_dict
-        to_function_dict['exclude_dict'] = exclude_dict
-
-        query_string = SqlalchemyQueryMisc.sqlalchemy_kward_query(
-            **to_function_dict).statement.compile(
-                compile_kwargs={"literal_binds": True}).string
-        sql_statement = """
-            SELECT DISTINCT jsonb_object_keys(dimensions) AS keys
-            FROM (
-                {query_string}
-            ) sub
-            ORDER BY keys
-        """.format(query_string=query_string) # NOQA Controlled Input
-        distinct_keys = pd.read_sql(
-            text(sql_statement), con=self.db.engine)\
-            .loc[:, "keys"]
-        return distinct_keys
-
-    def list_dimension_values(self, key: str, filter_dict: dict = {},
-                              exclude_dict: dict = {}) -> list:
-        """List dimensions avaiable using query.
-
-        Args:
-            key (str):
-                Key to list possible values in database.
-            filter_dict (dict):
-                Filter query dict to get avaiable dimensions.
-            exclude_dict (dict):
-                Exclude query dict to get avaiable dimensions.
-
-        Returns:
-            List of the avaiable values for key dimention.
-        """
-        self.get_session()
-        to_function_dict = {}
-        to_function_dict['object_model'] = self.model_class
-        if filter_dict is not None:
-            to_function_dict["filter_dict"] = filter_dict
-        if exclude_dict is not None:
-            to_function_dict["exclude_dict"] = exclude_dict
-
-        query_string = SqlalchemyQueryMisc.sqlalchemy_kward_query(
-            **to_function_dict).statement.compile(
-                compile_kwargs={"literal_binds": True}).string
-
-        sql_statement = """
-            SELECT DISTINCT dimensions -> '{key}' AS value
-            FROM (
-                {query_string}
-            ) sub
-            WHERE dimensions -> '{key}' IS NOT NULL
-            ORDER BY value
-        """.format(query_string=query_string, key=key) # NOQA Controlled Input
-        distinct_values = pd.read_sql(text(sql_statement), con=self.db.engine)\
-            .loc[:, "value"]
-        return distinct_values
-
-
-def register_pumpwood_view(app, view, service_object: dict):
-    """Register a pumpwood view.
-
-    Args:
-        app (Flask App):
-            Flask app to register the PumpWood View
-        view (PumpWoodFlaskView or PumpWoodDataFlaskView):
-            View to be registered
-        suffix (str):
-            Sufix to be added to the begging of the of the model
-            name.
-        service_object (dict):
-            Serialized object associated with service.
-
-    Raises:
-        No particular raises.
-
-    """
-    view.create_route_object(service_object=service_object)
-
-    model_class_name = view.model_class.__name__
-    suffix = os.getenv('ENDPOINT_SUFFIX', '')
-    model_class_name = suffix + model_class_name
-
-    url_no_args = '/rest/%s/<end_point>/' % model_class_name.lower()
-    url_1_args = '/rest/%s/<end_point>/<first_arg>/' % model_class_name.lower()
-    url_2_args = '/rest/%s/<end_point>/<first_arg>/<second_arg>/' % \
-        model_class_name.lower()
-
-    view_func = view.as_view()
-    app.add_url_rule(url_no_args, view_func=view_func)
-    app.add_url_rule(url_1_args, view_func=view_func)
-    app.add_url_rule(url_2_args, view_func=view_func)
-
-    # Error handlers
-    @app.errorhandler(exceptions.PumpWoodException)
-    def handle_pumpwood_errors(error):
-        response = jsonify(error.to_dict())
-        response.status_code = error.status_code
-        return response
-
-    # Python errors
-    @app.errorhandler(TypeError)
-    def handle_type_errors(error):
-        pump_exc = exceptions.PumpWoodException(message=str(error))
-        response = jsonify(pump_exc.to_dict())
-        response.status_code = pump_exc.status_code
-        return response
-
-    # SQLAlchemy errors
-    @app.errorhandler(sqlalchemy.exc.SQLAlchemyError)
-    def handle_sqlalchemy_programmingerror_errors(error):
-        error_dict = TreatSQLAlchemyError.treat(
-            error=error, connection_url=app.config['SQLALCHEMY_DATABASE_URI'])
-        ErrorClass = exceptions.exceptions_dict.get(error_dict['type']) # NOQA
-        if ErrorClass is None:
-            msg = (
-                "Error class returned by 'TreatSQLAlchemyError' [{type}] "
-                "is not implemented on PumpwoodCommunication package.")\
-                .format(type=error_dict['type'])
-            raise NotImplementedError(msg)
-
-        pump_exc = ErrorClass(
-            message=error_dict['message'], payload=error_dict['payload'])
-        response = jsonify(pump_exc.to_dict())
-        response.status_code = pump_exc.status_code
-        return response
-
-    # psycopg2 error handlers
-    @app.errorhandler(psycopg2.Error)
-    def handle_psycopg2_error(error):
-        error_dict = TreatPsycopg2Error.treat(error=error)
-        ErrorClass = exceptions.exceptions_dict.get(error_dict['type']) # NOQA
-        pump_exc = ErrorClass(
-            message=error_dict['message'], payload=error_dict['payload'])
-        response = jsonify(pump_exc.to_dict())
-        response.status_code = pump_exc.status_code
-        return response
-
-    # marshmallow errors
-    @app.errorhandler(ValidationError)
-    def handle_marshmallow_validationerror(error):
-        message = "Error when saving object"
-        messages_dict = error.messages
-        pump_exc = exceptions.PumpWoodObjectSavingException(
-            message=message, payload=messages_dict)
-        response = jsonify(pump_exc.to_dict())
-        response.status_code = pump_exc.status_code
-        return response
