@@ -133,6 +133,7 @@ class PumpWoodFlaskView(View):
         Returns:
             Return a sqlalchemy query with applied base filters.
         """
+        # TODO: Ajust the behavior to use base query objects.
         return BaseQuery\
             .row_permission_filter(model=cls.model_class)
 
