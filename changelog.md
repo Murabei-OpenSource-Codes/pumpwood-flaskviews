@@ -7,13 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.3.39] - 2025-11-25
 ### Added
-- Add treatment for fields that are not present on serializer..
+- Add treatment for fields that are not present on serializer.
 
 ### Fix
 - No fix.
 
 ### Changed
-- Refactor code.
+- No change.
 
 
 ## [1.3.38] - 2025-11-14
