@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [X.X.XX] - 2025-11-25
+### Added
+- Add treatment for fields that are not present on serializer..
+
+### Fix
+- No fix.
+
+### Changed
+- Refactor code.
+
+
 ## [1.3.38] - 2025-11-14
 ### Added
 - Add base query and classes to restrict objects associated with users.
