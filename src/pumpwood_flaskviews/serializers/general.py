@@ -86,29 +86,36 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
 
         # Validate if all only and exlcude fields are present on
         # Model or the serializer definition
-        self._validate_fields(fields=only + to_remove)
+        # use or when only and to_remove are not set
+        self._validate_fields(fields=(
+            (only or []) + (to_remove or [])))
 
         kwargs["only"] = only
         kwargs["exclude"] = to_remove
 
-        print("Ok!!")
         # Adjusting compatibility with previous versions of
         # Marshmellow SQLAlchemy
         kwargs["unknown"] = EXCLUDE  # Default excluding not mapped fields
         kwargs['load_instance'] = True  # load_instance as default
         super().__init__(**kwargs)
 
-    def _validate_fields(self, fields: list[str]) -> None:
+    def _validate_fields(self, fields: list[str] | None) -> None:
         """Validate if fields are declared at Serializer or at Model.
+
+        Args:
+            fields (list[str] | None):
+                Fields that will validated.
 
         Raises:
             PumpWoodQueryException:
                 Raise PumpWoodQueryException if fields are not present on
                 model or serializer.
         """
+        if fields is None:
+            return None
+
         # Fetch fields defined at model and serializer and check if
         # fields are present, if not raise an PumpWoodQueryException
-
         model_field_names = set(self.opts.model.__table__.columns.keys())
         explicit_field_names = set(self._declared_fields.keys())
         valid_field_names = model_field_names | explicit_field_names
@@ -121,8 +128,7 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
             raise PumpWoodQueryException(
                 message=msg, payload={
                     "fields": list(not_present_fields),
-                    "model": self.opts.model.__name__
-                })
+                    "model": self.opts.model.__name__})
 
     def get_list_fields(self) -> list:
         """Get list fields from serializer.
