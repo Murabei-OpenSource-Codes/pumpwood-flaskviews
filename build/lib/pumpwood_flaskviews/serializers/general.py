@@ -123,7 +123,7 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
         not_present_fields = set(fields) - valid_field_names
         if len(not_present_fields):
             msg = (
-                "Requested Fields {fields} are not present on model [{model}] "
+                "Requested fields {fields} are not present on model [{model}] "
                 "definition")
             raise PumpWoodQueryException(
                 message=msg, payload={
