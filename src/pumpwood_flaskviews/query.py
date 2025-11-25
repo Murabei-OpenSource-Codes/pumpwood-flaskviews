@@ -353,7 +353,9 @@ class SqlalchemyQueryMisc():
                          'operation': cls._underscore_operators[operation_key],
                          'value': value})
 
-        return {'models': join_models, 'columns': columns_values_filter}
+        return {
+            'models': join_models,
+            'columns': columns_values_filter}
 
     @classmethod
     def sqlalchemy_kward_query(cls, object_model, filter_dict: dict = {},
