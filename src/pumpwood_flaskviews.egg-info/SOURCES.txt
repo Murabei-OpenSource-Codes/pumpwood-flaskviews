@@ -9,7 +9,6 @@ src/pumpwood_flaskviews/config.py
 src/pumpwood_flaskviews/fields.py
 src/pumpwood_flaskviews/json.py
 src/pumpwood_flaskviews/query.py
-src/pumpwood_flaskviews/serializers.py
 src/pumpwood_flaskviews/sqlalchemy.py
 src/pumpwood_flaskviews.egg-info/PKG-INFO
 src/pumpwood_flaskviews.egg-info/SOURCES.txt
@@ -28,6 +27,8 @@ src/pumpwood_flaskviews/inspection/models.py
 src/pumpwood_flaskviews/query/__init__.py
 src/pumpwood_flaskviews/query/base_query.py
 src/pumpwood_flaskviews/query/query_builder.py
+src/pumpwood_flaskviews/serializers/__init__.py
+src/pumpwood_flaskviews/serializers/general.py
 src/pumpwood_flaskviews/views/__init__.py
 src/pumpwood_flaskviews/views/register.py
 src/pumpwood_flaskviews/views/classes/__init__.py
