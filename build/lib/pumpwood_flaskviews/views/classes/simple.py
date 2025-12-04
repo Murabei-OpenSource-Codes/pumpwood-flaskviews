@@ -232,38 +232,6 @@ class PumpWoodFlaskView(View):
         return session
 
     @classmethod
-    def pumpwood_pk_get(cls, pk: Union[str, int]) -> object:
-        """Get model_class object using pumpwood pk.
-
-        Pumpwood pk may be integers and base64 strings coding a dictionary
-        with composite primary keys. This function abstract SQLAlchemy
-        query.get to treat both possibilities.
-
-        Args:
-            pk (str, int):
-                Pumpwood primary key.
-
-        Return:
-            Returns a SQLAlchemy object with corresponding primary key.
-        """
-        converted_pk = CompositePkBase64Converter.load(pk)
-        if isinstance(converted_pk, (int, float)):
-            # If a numeric data is passed as pk it is associated with
-            # 'id' field, it is necessary to convert to a dict to unpack
-            # on filter_by
-            converted_pk = {'id': converted_pk}
-
-        # Use base query to filter object acording to user's permission
-        tmp_base_query = cls.base_query\
-            .add_filter(model=cls.model_class)
-
-        # Since base query inject a filter retricting user information
-        # it is not possible to use .get
-        model_object = tmp_base_query\
-            .filter_by(**converted_pk).one()
-        return model_object
-
-    @classmethod
     def create_route_object(cls, service_object: dict) -> dict:
         """Build Route object from view information.
 
@@ -749,21 +717,7 @@ class PumpWoodFlaskView(View):
         """
         self.get_session()
 
-        model_object = self.pumpwood_pk_get(pk=pk)
-        if pk is not None and model_object is None:
-            temp_model_class = self.model_class.__mapper__.class_.__name__
-            # Try to convert pk to int for correct raising
-            try:
-                pk = int(pk)
-            except Exception:
-                pk = pk
-
-            message = "Requested object {model_class}[{pk}] not found."
-            raise exceptions.PumpWoodObjectDoesNotExist(
-                message=message, payload={
-                    "model_class": temp_model_class,
-                    "pk": pk})
-
+        model_object = self.model_class.default_query_get(pk=pk)
         retrieve_serializer = self.serializer(
             many=False, fields=fields, default_fields=default_fields,
             foreign_key_fields=foreign_key_fields,
@@ -905,7 +859,7 @@ class PumpWoodFlaskView(View):
                 "file_field must be set on self.file_fields dictionary.")
 
         session = self.get_session()
-        obj = self.pumpwood_pk_get(pk=pk)
+        obj = self.model_class.default_query_get(pk=pk)
         file_path = file_path = getattr(obj, file_field)
         if file_path is None:
             raise exceptions.PumpWoodObjectDoesNotExist(
@@ -947,7 +901,7 @@ class PumpWoodFlaskView(View):
             Return the excluded object.
         """
         session = self.get_session()
-        model_object = self.pumpwood_pk_get(pk=pk)
+        model_object = self.model_class.default_query_get(pk=pk)
         if pk is not None and model_object is None:
             message = "Requested object {model_class}[{pk}] not found.".format(
                 model_class=self.model_class.__mapper__.class_.__name__, pk=pk)
@@ -1070,9 +1024,9 @@ class PumpWoodFlaskView(View):
         pk = data.pop('pk', None)
         to_save_obj = None
         model_object = None
-        # Retrieve object if pk is set
         if pk is not None:
-            model_object = self.pumpwood_pk_get(pk=pk)
+            model_object = self.model_class.default_query_get(pk=pk)
+
         to_save_obj = retrieve_serializer.load(
             data, instance=model_object, session=session)
         try:
@@ -1364,7 +1318,7 @@ class PumpWoodFlaskView(View):
                 raise exceptions.PumpWoodActionArgsException(
                     "Function is static and pk is not Null")
 
-            model_object = self.pumpwood_pk_get(pk=pk)
+            model_object = self.model_class.default_query_get(pk=pk)
             if model_object is None:
                 message_template = (
                     "Requested object {model_class}[{pk}] not found.")
