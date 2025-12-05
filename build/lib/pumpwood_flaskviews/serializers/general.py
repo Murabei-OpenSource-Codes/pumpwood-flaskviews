@@ -2,7 +2,8 @@
 from marshmallow import validates, fields, ValidationError, EXCLUDE
 from marshmallow_sqlalchemy import SQLAlchemyAutoSchema
 from pumpwood_flaskviews.fields import (
-    PrimaryKeyField, MicroserviceForeignKeyField, MicroserviceRelatedField)
+    PrimaryKeyField, MicroserviceForeignKeyField, MicroserviceRelatedField,
+    LocalForeignKeyField, LocalRelatedField)
 from pumpwood_communication.exceptions import PumpWoodQueryException
 
 
@@ -68,14 +69,14 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
 
             # Keep related only if user ask to keep them
             is_related_micro = isinstance(
-                item, MicroserviceRelatedField)
+                item, (MicroserviceRelatedField, LocalRelatedField))
             if is_related_micro and not related_fields:
                 to_remove.append(key)
                 continue
 
             # Keep FK only if user ask for them
             is_foreign_key_micro = isinstance(
-                item, MicroserviceForeignKeyField)
+                item, (MicroserviceForeignKeyField, LocalForeignKeyField))
             if is_foreign_key_micro and not foreign_key_fields:
                 to_remove.append(key)
                 continue
@@ -160,7 +161,8 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
         """
         return_dict = {}
         for field_name, field in self._declared_fields.items():
-            is_micro_fk = isinstance(field, MicroserviceForeignKeyField)
+            is_micro_fk = isinstance(field, (
+                MicroserviceForeignKeyField, LocalForeignKeyField))
             if is_micro_fk:
                 return_dict[field.source] = field.to_dict()
         return return_dict
@@ -180,7 +182,8 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
         """
         return_dict = {}
         for field_name, field in self._declared_fields.items():
-            is_micro_rel = isinstance(field, MicroserviceRelatedField)
+            is_micro_rel = isinstance(field, (
+                MicroserviceRelatedField, LocalRelatedField))
             if is_micro_rel:
                 return_dict[field_name] = field.to_dict()
         return return_dict

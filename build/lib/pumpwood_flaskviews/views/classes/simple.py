@@ -11,9 +11,7 @@ from flask.views import View
 from flask import request, Response
 from flask import jsonify, send_file
 from werkzeug.utils import secure_filename
-from loguru import logger
 from flask_sqlalchemy.query import Query
-from sqlalchemy.sql import text
 from sqlalchemy import inspect as alchemy_inspect
 from sqlalchemy.sql.functions import GenericFunction
 from sqlalchemy.sql.schema import Sequence, UniqueConstraint
@@ -26,11 +24,11 @@ from pumpwood_communication import exceptions
 from pumpwood_communication.microservices import PumpWoodMicroService
 from pumpwood_communication.serializers import CompositePkBase64Converter
 from pumpwood_communication.cache import default_cache
+from pumpwood_flaskviews.sqlalchemy import get_session
 
 # Flask view
 from pumpwood_flaskviews.inspection import model_has_column
-from pumpwood_flaskviews.query import (
-    SqlalchemyQueryMisc, BaseQueryABC, BaseQueryNoFilter)
+from pumpwood_flaskviews.query import SqlalchemyQueryMisc
 from pumpwood_flaskviews.auth import AuthFactory
 from pumpwood_flaskviews.action import load_action_parameters
 from pumpwood_flaskviews.config import INFO_CACHE_TIMEOUT
@@ -90,15 +88,6 @@ class PumpWoodFlaskView(View):
     broadcast: bool = True
     """Set if save, delete, action end-points will broadcast to ETL
        microservice if present."""
-    base_query: BaseQueryABC = BaseQueryNoFilter()
-    """A base query object from `BaseQueryABC` class.
-
-    `BaseQueryNoFilter` will not apply any filters.
-
-    This object will set all end-points default filter of objects, it
-    will be applied to all end-points (retrieve, list, delete, action, ...).
-    It can be used to retrict access to data according to user row_permission
-    or object ownership."""
 
     # Query information
     table_partition: list[str] = []
@@ -154,8 +143,7 @@ class PumpWoodFlaskView(View):
         Returns:
             Return a sqlalchemy query with applied default filters.
         """
-        return cls.base_query\
-            .add_filter(model=cls.model_class, query=query)
+        return cls.model_class.default_filter_query(query=query)
 
     @classmethod
     def _extract_primary_keys(cls,
@@ -223,13 +211,7 @@ class PumpWoodFlaskView(View):
         Ping connection before quering database and restore session if
         necessary.
         """
-        session = self.db.session
-        try:
-            session.execute(text("SELECT 1;"))
-        except Exception:
-            self.db.engine.dispose()
-            session.rollback()
-        return session
+        return get_session(db=self.db)
 
     @classmethod
     def pumpwood_pk_get(cls, pk: Union[str, int]) -> object:
@@ -254,7 +236,7 @@ class PumpWoodFlaskView(View):
             converted_pk = {'id': converted_pk}
 
         # Use base query to filter object acording to user's permission
-        tmp_base_query = cls.base_query\
+        tmp_base_query = cls.model_class.base_query\
             .add_filter(model=cls.model_class)
 
         # Since base query inject a filter retricting user information
@@ -620,33 +602,10 @@ class PumpWoodFlaskView(View):
         order_by = [] if order_by is None else order_by
         self.get_session()
 
-        # Do not display deleted objects
-        if model_has_column(self.model_class, column='deleted'):
-            info_msg = 'deleted field detected: model_class[{model_class}]'\
-                .format(model_class=self.model_class.__name__)
-            logger.info(info_msg)
-            exclude_dict_keys = exclude_dict.keys()
-            any_delete = False
-            for key in exclude_dict_keys:
-                first = key.split("__")[0]
-                if first == "deleted":
-                    any_delete = True
-                    break
-            if not any_delete:
-                exclude_dict["deleted"] = True
-
         list_paginate_limit = limit or self.list_paginate_limit
-
-        # Use base query to limit user access
-        base_query = self._add_default_filter()
-        query_result = SqlalchemyQueryMisc\
-            .sqlalchemy_kward_query(
-                object_model=self.model_class,
-                base_query=base_query,
-                filter_dict=filter_dict,
-                exclude_dict=exclude_dict,
-                order_by=order_by)\
-            .limit(list_paginate_limit).all()
+        query_result = self.model_class.default_query_list(
+            filter_dict=filter_dict, exclude_dict=exclude_dict,
+            order_by=order_by, limit=list_paginate_limit)
 
         list_serializer = self.serializer(
             many=True, fields=fields, default_fields=default_fields,
@@ -686,37 +645,16 @@ class PumpWoodFlaskView(View):
             Return a list of serialized objects using self.serializer and
             filtered by args without pagination all values.
         """
+        self.get_session()
+
         # Set list and dicts in the fuction to no bug with pointers
         filter_dict = {} if filter_dict is None else filter_dict
         exclude_dict = {} if exclude_dict is None else exclude_dict
         order_by = [] if order_by is None else order_by
-        self.get_session()
 
-        # Do not display deleted objects
-        if model_has_column(self.model_class, column='deleted'):
-            info_msg = 'deleted field detected: model_class[{model_class}]'\
-                .format(model_class=self.model_class.__name__)
-            logger.info(info_msg)
-            exclude_dict_keys = exclude_dict.keys()
-            any_delete = False
-            for key in exclude_dict_keys:
-                first = key.split("__")[0]
-                if first == "deleted":
-                    any_delete = True
-                    break
-            if not any_delete:
-                exclude_dict["deleted"] = True
-
-        # Use base query to filter object associated with user's
-        base_query = self._add_default_filter()
-        query_result = SqlalchemyQueryMisc\
-            .sqlalchemy_kward_query(
-                object_model=self.model_class,
-                base_query=base_query,
-                filter_dict=filter_dict,
-                exclude_dict=exclude_dict,
-                order_by=order_by)\
-            .all()
+        query_result = self.model_class.default_query_list(
+            filter_dict=filter_dict, exclude_dict=exclude_dict,
+            order_by=order_by)
 
         list_serializer = self.serializer(
             many=True, fields=fields, default_fields=default_fields,
@@ -749,21 +687,7 @@ class PumpWoodFlaskView(View):
         """
         self.get_session()
 
-        model_object = self.pumpwood_pk_get(pk=pk)
-        if pk is not None and model_object is None:
-            temp_model_class = self.model_class.__mapper__.class_.__name__
-            # Try to convert pk to int for correct raising
-            try:
-                pk = int(pk)
-            except Exception:
-                pk = pk
-
-            message = "Requested object {model_class}[{pk}] not found."
-            raise exceptions.PumpWoodObjectDoesNotExist(
-                message=message, payload={
-                    "model_class": temp_model_class,
-                    "pk": pk})
-
+        model_object = self.model_class.default_query_get(pk=pk)
         retrieve_serializer = self.serializer(
             many=False, fields=fields, default_fields=default_fields,
             foreign_key_fields=foreign_key_fields,
