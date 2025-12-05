@@ -5,7 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.3.40] - 2025-11-25
+## [1.3.42] - 2025-11-25
+### Added
+- Add new fields for foreign_key and related for local models using database
+  connection and serializers
+- Add query functions associated with model using `FlaskPumpWoodBaseModel`.
+  This query functions use BaseQueries that can be used to restrict access to
+  data according to row_permission, owner or other information.
+
+### Fix
+- No fix.
+
+### Changed
+- Refactor code.
+
+## [1.3.41] - 2025-11-25
 ### Added
 - Add treatment for fields that are not present on serializer.
 

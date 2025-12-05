@@ -1,6 +1,7 @@
 """Pumpwood Marshmellow microservice fields."""
+import copy
 from typing import List, Dict, Any, Union
-from marshmallow import fields
+from marshmallow.fields import Field
 from pumpwood_communication import exceptions
 from pumpwood_communication.serializers import CompositePkBase64Converter
 from pumpwood_communication.microservices import PumpWoodMicroService
@@ -8,7 +9,7 @@ from pumpwood_flaskviews.config import (
     SERIALIZER_FK_CACHE_TIMEOUT)
 
 
-class MicroserviceForeignKeyField(fields.Field):
+class MicroserviceForeignKeyField(Field):
     """Serializer field for ForeignKey using microservice.
 
     Returns a tupple with both real value on [0] and get_{field_name}_display
@@ -155,7 +156,7 @@ class MicroserviceForeignKeyField(fields.Field):
         if object_pk is None:
             return {"model_class": self.model_class}
         return self._microservice_retrieve(
-            object_pk=object_pk, fields=fields)
+            object_pk=object_pk, fields=self.fields)
 
     def _deserialize(self, value, attr, data, **kwargs):
         raise NotImplementedError(
@@ -170,7 +171,7 @@ class MicroserviceForeignKeyField(fields.Field):
             'object_field': self.name, 'source_keys': source_keys}
 
 
-class MicroserviceRelatedField(fields.Field):
+class MicroserviceRelatedField(Field):
     """Serializer field for related objects using microservice.
 
     It is an informational serializer to related models.
@@ -280,14 +281,14 @@ class MicroserviceRelatedField(fields.Field):
             filter_dict[item] = getattr(obj, key)
         return filter_dict
 
-    def _get_list_arg_exlude_dict(self, obj) -> Dict[str, Any]:
+    def _get_list_arg_exclude_dict(self, obj) -> Dict[str, Any]:
         """Return the exclude dict that will be used at list end-point.
 
         Returns:
             Return a dictionary that will be used as exclude_dict at
             list end-point.
         """
-        return self.exclude_dict
+        return copy.deepcopy(self.exclude_dict)
 
     def _get_list_arg_order_by(self, obj) -> List[str]:
         """Return order_by list to be used at list end-point.
@@ -296,7 +297,7 @@ class MicroserviceRelatedField(fields.Field):
             Return a list that will be used as order_by at
             list end-point.
         """
-        return self.order_by
+        return copy.deepcopy(self.order_by)
 
     def _get_list_arg_fields(self, obj) -> List[str]:
         """Return fields list to be used at list end-point.
@@ -305,19 +306,19 @@ class MicroserviceRelatedField(fields.Field):
             Return a list that will be used as fields at
             list end-point.
         """
-        return self.fields
+        return copy.deepcopy(self.fields)
 
     def _serialize(self, value, attr, obj, **kwargs):
         """Use microservice to get object at serialization."""
         self.microservice.login()
         filter_dict = self._get_list_arg_filter_dict(obj)
-        exlude_dict = self._get_list_arg_exlude_dict(obj)
+        exclude_dict = self._get_list_arg_exclude_dict(obj)
         order_by = self._get_list_arg_order_by(obj)
         fields = self._get_list_arg_fields(obj)
 
         return self.microservice.list_without_pag(
             model_class=self.model_class,
-            filter_dict=filter_dict, exlude_dict=exlude_dict,
+            filter_dict=filter_dict, exclude_dict=exclude_dict,
             order_by=order_by, fields=fields,
             default_fields=True)
 
