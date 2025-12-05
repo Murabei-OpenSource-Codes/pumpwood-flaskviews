@@ -3,6 +3,7 @@ from marshmallow import validates, fields, ValidationError, EXCLUDE
 from marshmallow_sqlalchemy import SQLAlchemyAutoSchema
 from pumpwood_flaskviews.fields import (
     PrimaryKeyField, MicroserviceForeignKeyField, MicroserviceRelatedField)
+from pumpwood_communication.exceptions import PumpWoodQueryException
 
 
 def get_model_class(obj):
@@ -82,6 +83,13 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
         # Guaranty that fields will no conflict with exclude
         if only is not None:
             only = list(set(only) - set(to_remove))
+
+        # Validate if all only and exlcude fields are present on
+        # Model or the serializer definition
+        # use or when only and to_remove are not set
+        self._validate_fields(fields=(
+            (only or []) + (to_remove or [])))
+
         kwargs["only"] = only
         kwargs["exclude"] = to_remove
 
@@ -90,6 +98,37 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
         kwargs["unknown"] = EXCLUDE  # Default excluding not mapped fields
         kwargs['load_instance'] = True  # load_instance as default
         super().__init__(**kwargs)
+
+    def _validate_fields(self, fields: list[str] | None) -> None:
+        """Validate if fields are declared at Serializer or at Model.
+
+        Args:
+            fields (list[str] | None):
+                Fields that will validated.
+
+        Raises:
+            PumpWoodQueryException:
+                Raise PumpWoodQueryException if fields are not present on
+                model or serializer.
+        """
+        if fields is None:
+            return None
+
+        # Fetch fields defined at model and serializer and check if
+        # fields are present, if not raise an PumpWoodQueryException
+        model_field_names = set(self.opts.model.__table__.columns.keys())
+        explicit_field_names = set(self._declared_fields.keys())
+        valid_field_names = model_field_names | explicit_field_names
+
+        not_present_fields = set(fields) - valid_field_names
+        if len(not_present_fields):
+            msg = (
+                "Requested fields {fields} are not present on model [{model}] "
+                "definition")
+            raise PumpWoodQueryException(
+                message=msg, payload={
+                    "fields": list(not_present_fields),
+                    "model": self.opts.model.__name__})
 
     def get_list_fields(self) -> list:
         """Get list fields from serializer.
