@@ -1,19 +1,31 @@
-"""Pumpwood Marshmellow microservice fields."""
-from typing import List, Dict, Any, Union
+"""Pumpwood Marshmellow local reference fields."""
+import importlib
+from loguru import logger
+from typing import List, Dict, Any, Union, Callable
 from marshmallow import fields
 from pumpwood_communication import exceptions
+from pumpwood_communication.cache import default_cache
 from pumpwood_communication.serializers import CompositePkBase64Converter
-from pumpwood_communication.microservices import PumpWoodMicroService
-from pumpwood_flaskviews.config import (
-    SERIALIZER_FK_CACHE_TIMEOUT)
+from pumpwood_flaskviews.auth import AuthFactory
+from pumpwood_flaskviews.model import FlaskPumpWoodBaseModel
 
 
-class MicroserviceForeignKeyField(fields.Field):
-    """Serializer field for ForeignKey using microservice.
+def _import_function_by_string(module: str | Any) -> Callable:
+    """Help importing a function using a string or function if not string."""
+    if not isinstance(module, str):
+        return module
 
-    Returns a tupple with both real value on [0] and get_{field_name}_display
-    on [1]. to_internal_value uses only de first value os the tupple
-    if a tupple, or just the value if not a tupple.
+    module_name, function_name = module.rsplit('.', 1)
+    module = importlib.import_module(module_name)
+    func = getattr(module, function_name)
+    return func
+
+
+class LocalForeignKeyField(fields.Field):
+    """Serializer field for ForeignKey using local query.
+
+    Query connection to retrieve object from database and serialize it
+    using defined serializer.
     """
 
     # Disable check if attribute exists on object, Micro service related are
@@ -21,8 +33,9 @@ class MicroserviceForeignKeyField(fields.Field):
     _CHECK_ATTRIBUTE = False
 
     def __init__(self, source: str,
-                 microservice: PumpWoodMicroService,
-                 model_class: str, display_field: str = None,
+                 model_class: str | FlaskPumpWoodBaseModel,
+                 serializer: str,
+                 display_field: str = None,
                  complementary_source: Dict[str, str] = None,
                  fields: List[str] = None, **kwargs):
         """Class constructor.
@@ -30,24 +43,24 @@ class MicroserviceForeignKeyField(fields.Field):
         Args:
             source (str):
                 Name of the field that contains foreign_key id.
+            model_class (str | FlaskPumpWoodBaseModel):
+                Local model class from which information will be retrieved,
+                it is possible to use string to avoid circular imports.
+            serializer (str | FlaskPumpWoodBaseModel):
+                Serializer that will be used serialize objects, it is possible
+                to use a string to avoid circular imports.
+            display_field  (str):
+                Display field that is set as __display_field__ value
+                when returning the object.
             complementary_source (Dict[str, str]): = dict()
                 When related field has a composite primary key it is
                 necessary to specify complementary primary key field to
                 fetch the object. The dictonary will set the mapping
                 of the complementary pk field to correspondent related
                 model obj key -> related object field.
-            microservice (PumpWoodMicroService):
-                Microservice object that will be used to retrieve
-                foreign_key information.
-            model_class (str):
-                Model class associated with Foreign Key.
-            display_field  (str):
-                Display field that is set as __display_field__ value
-                when returning the object.
             fields (List[str]):
                 Set the fileds that will be returned at the foreign key
                 object.
-            extra_pk_fields
             **kwargs:
                 Compatibylity with other versions and super of method.
         """
@@ -56,15 +69,24 @@ class MicroserviceForeignKeyField(fields.Field):
             else complementary_source)
 
         # Validations
-        if type(source) is not str:
-            msg = "source argument must be a string"
+        if not isinstance(source, (str)):
+            msg = (
+                "{name} source argument must be a string or")\
+                    .format(name=self.__name__)
             raise exceptions.PumpWoodOtherException(message=msg)
-        if type(complementary_source) is not dict:
-            msg = "complementary_source argument must be a dictonary"
+        if not isinstance(model_class, (str, FlaskPumpWoodBaseModel)):
+            msg = (
+                "{name} source argument must be a string or "
+                "FlaskPumpWoodBaseModel").format(name=self.__name__)
+            raise exceptions.PumpWoodOtherException(message=msg)
+        if not isinstance(complementary_source, (dict)):
+            msg = (
+                "{name} complementary_source argument must be a dictonary "
+                "or None").format(name=self.__name__)
             raise exceptions.PumpWoodOtherException(message=msg)
 
-        self.microservice = microservice
-        self.model_class = model_class
+        self.model_class = _import_function_by_string(module=model_class)
+        self.serializer = _import_function_by_string(module=serializer)
         self.display_field = display_field
         self.complementary_source = complementary_source
         self.source = source
@@ -74,7 +96,7 @@ class MicroserviceForeignKeyField(fields.Field):
         # done using id
         kwargs['required'] = False
         kwargs['dump_only'] = True
-        super(MicroserviceForeignKeyField, self).__init__(**kwargs)
+        super(LocalForeignKeyField, self).__init__(**kwargs)
 
     def get_source_pk_fields(self) -> List[str]:
         """Return a list of source fields associated with FK.
@@ -93,8 +115,8 @@ class MicroserviceForeignKeyField(fields.Field):
         complementary_source = self.complementary_source | {}
         return [self.source] + list(complementary_source.keys())
 
-    def _microservice_retrieve(self, object_pk: Union[int, str],
-                               fields: List[str]) -> dict:
+    def _retrieve_data(self, object_pk: Union[int, str],
+                       fields: List[str]) -> dict:
         """Retrieve data using microservice and cache results.
 
         Retrieve data using list one at the destination model_class, it
@@ -107,39 +129,55 @@ class MicroserviceForeignKeyField(fields.Field):
             fields (List[str]):
                 Limit the fields that will be returned using microservice.
         """
-        try:
-            object_data = self.microservice.list_one(
-                model_class=self.model_class, pk=object_pk,
-                fields=self.fields, use_disk_cache=True,
-                disk_cache_expire=SERIALIZER_FK_CACHE_TIMEOUT)
-        except exceptions.PumpWoodObjectDoesNotExist:
-            return {
-                "model_class": self.model_class,
-                "__error__": 'PumpWoodObjectDoesNotExist'}
+        obj = self.model_class.default_query_get(pk=object_pk)
+        temp_serializer = self.serializer(
+            many=True, fields=fields, default_fields=False,
+            foreign_key_fields=False, related_fields=False)
+        return temp_serializer.dump(obj)
 
+    def _retrieve_cache(self, object_pk: Union[int, str],
+                        fields: List[str]) -> dict:
+        """Retrieve data using object data and fields.
+
+        Function will also use auth header associated with request.
+
+        Args:
+            object_pk (Union[int, str]):
+                Object primary key to retrieve information using
+                microservice.
+            fields (List[str]):
+                Limit the fields that will be returned using microservice.
+        """
+        # Use auth header and object pk and context to fetch cache
+        hash_dict = AuthFactory.get_auth_header()
+        hash_dict['object_pk'] = object_pk
+        hash_dict['fields'] = fields
+        hash_dict['context'] = 'pumpwood-flaskviews-local-foreignkey-field'
+
+        cache_result = default_cache.get(hash_dict=hash_dict)
+        if cache_result is not None:
+            msg = "get from local cache[{name}]".format(name=self.__name__)
+            logger.info(msg)
+
+        return {
+            'hash_dict': hash_dict,
+            'cache_result': cache_result}
+
+    def _set_display_field(self, object_data: dict) -> dict:
+        """Add a __display_field__ to object data.
+
+        Args:
+            object_data (dict):
+                Object data to add `__display_field__` if field
+                self.display_field is set.
+        """
         if self.display_field is not None:
-            if self.display_field not in object_data.keys():
-                msg = (
-                    "Serializer not correctly configured, it is not possible "
-                    "to find display_field[{display_field}] at the object "
-                    "of foreign_key[{foreign_key}] liked to "
-                    "model_class[{model_class}]").format(
-                        display_field=self.display_field,
-                        foreign_key=self.name, model_class=self.model_class)
-                raise exceptions.PumpWoodOtherException(
-                    msg, payload={
-                        "display_field": self.display_field,
-                        "foreign_key": self.name,
-                        "model_class": self.model_class})
-            object_data['__display_field__'] = object_data[self.display_field]
-        else:
-            object_data['__display_field__'] = None
+            object_data['__display_field__'] = object_data.get(
+                self.display_field)
         return object_data
 
     def _serialize(self, value, attr, obj, **kwargs):
         """Use microservice to get object at serialization."""
-        self.microservice.login()
-
         object_pk = None
         if not self.complementary_source:
             object_pk = getattr(obj, self.source)
@@ -149,13 +187,20 @@ class MicroserviceForeignKeyField(fields.Field):
             object_pk = CompositePkBase64Converter.dump(
                 obj=obj, primary_keys=primary_keys)
 
-        # Return an empty object if object pk is None, this will help
-        # the front-end when always treating forenging key as a
-        # dictonary/object field.
-        if object_pk is None:
-            return {"model_class": self.model_class}
-        return self._microservice_retrieve(
+        # Retrive data from localcache to reduce calls to backend.
+        cache_data = self._retrieve_cache(
             object_pk=object_pk, fields=fields)
+        cache_result = cache_data.get('cache_result')
+        if cache_result is not None:
+            return cache_result
+
+        # If cache for this auth header is not avaible, fetch from database
+        # and serialize. Then set the cache
+        data_result = self._retrieve_data(
+            object_pk=object_pk, fields=fields)
+        data_result = self._set_display_field(object_data=data_result)
+        default_cache.get(hash_dict=cache_data['hash_dict'], value=data_result)
+        return data_result
 
     def _deserialize(self, value, attr, data, **kwargs):
         raise NotImplementedError(
@@ -165,12 +210,12 @@ class MicroserviceForeignKeyField(fields.Field):
         """Return a dict with values to be used on options end-point."""
         source_keys = self.get_source_pk_fields()
         return {
-            'model_class': self.model_class, 'many': False,
+            'model_class': self.model_class.__name__, 'many': False,
             'display_field': self.display_field,
             'object_field': self.name, 'source_keys': source_keys}
 
 
-class MicroserviceRelatedField(fields.Field):
+class LocalRelatedField(fields.Field):
     """Serializer field for related objects using microservice.
 
     It is an informational serializer to related models.
@@ -178,8 +223,10 @@ class MicroserviceRelatedField(fields.Field):
 
     _CHECK_ATTRIBUTE = False
 
-    def __init__(self, microservice: PumpWoodMicroService,
-                 model_class: str, foreign_key: str,
+    def __init__(self,
+                 model_class: str | FlaskPumpWoodBaseModel,
+                 serializer: str | Any,
+                 foreign_key: str,
                  complementary_foreign_key: None | Dict[str, str] = None,
                  pk_field: str = 'id', order_by: List[str] = None,
                  exclude_dict: None | Dict[str, str] = None,
@@ -188,11 +235,12 @@ class MicroserviceRelatedField(fields.Field):
         """Class constructor.
 
         Args:
-            microservice (PumpWoodMicroService):
-                Microservice object that will be used to retrieve
-                foreign_key information.
-            model_class (str):
-                Model class associated with Foreign Key.
+            model_class (str | FlaskPumpWoodBaseModel):
+                Local model class from which information will be retrieved,
+                it is possible to use string to avoid circular imports.
+            serializer (str | FlaskPumpWoodBaseModel):
+                Serializer that will be used serialize objects, it is possible
+                to use a string to avoid circular imports.
             foreign_key (str):
                 Foreign Key field that is a foreign key id to origin
                 model class.
@@ -232,12 +280,28 @@ class MicroserviceRelatedField(fields.Field):
             {} if exclude_dict is None
             else exclude_dict)
 
-        # Validation
-        if type(complementary_foreign_key) is not dict:
-            msg = "complementary_foreign_key type must be a dict"
+        # Validations
+        if not isinstance(foreign_key, (str)):
+            msg = (
+                "{name} source argument must be a string or")\
+                    .format(name=self.__name__)
             raise exceptions.PumpWoodOtherException(message=msg)
+        if not isinstance(model_class, (str, FlaskPumpWoodBaseModel)):
+            msg = (
+                "{name} source argument must be a string or "
+                "FlaskPumpWoodBaseModel").format(name=self.__name__)
+            raise exceptions.PumpWoodOtherException(message=msg)
+        if not isinstance(complementary_foreign_key, (dict)):
+            msg = (
+                "{name} complementary_source argument must be a dictonary "
+                "or None").format(name=self.__name__)
+            raise exceptions.PumpWoodOtherException(message=msg)
+
         if type(foreign_key) is not str:
             msg = "foreign_key type must be a str"
+            raise exceptions.PumpWoodOtherException(message=msg)
+        if type(complementary_foreign_key) is not dict:
+            msg = "complementary_foreign_key type must be a dict"
             raise exceptions.PumpWoodOtherException(message=msg)
         if type(order_by) is not list:
             msg = "order_by type must be a list"
@@ -246,8 +310,8 @@ class MicroserviceRelatedField(fields.Field):
             msg = "exclude_dict type must be a dict"
             raise exceptions.PumpWoodOtherException(message=msg)
 
-        self.microservice = microservice
-        self.model_class = model_class
+        self.model_class = _import_function_by_string(module=model_class)
+        self.serializer = _import_function_by_string(module=serializer)
         self.foreign_key = foreign_key
         self.complementary_foreign_key = complementary_foreign_key
         self.pk_field = pk_field
@@ -265,9 +329,9 @@ class MicroserviceRelatedField(fields.Field):
 
         # Set as read only and not required, changes on foreign key must be
         # done using id
-        super(MicroserviceRelatedField, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
-    def _get_list_arg_filter_dict(self, obj) -> Dict[str, Any]:
+    def _get_list_arg_filter_dict(self, obj: Any) -> Dict[str, Any]:
         """Return the filter_dict that will be used at list end-point.
 
         Returns:
@@ -309,17 +373,18 @@ class MicroserviceRelatedField(fields.Field):
 
     def _serialize(self, value, attr, obj, **kwargs):
         """Use microservice to get object at serialization."""
-        self.microservice.login()
         filter_dict = self._get_list_arg_filter_dict(obj)
         exlude_dict = self._get_list_arg_exlude_dict(obj)
         order_by = self._get_list_arg_order_by(obj)
         fields = self._get_list_arg_fields(obj)
 
-        return self.microservice.list_without_pag(
-            model_class=self.model_class,
+        query_result = self.model_class.default_query_list(
             filter_dict=filter_dict, exlude_dict=exlude_dict,
-            order_by=order_by, fields=fields,
-            default_fields=True)
+            order_by=order_by)
+        list_serializer = self.serializer(
+            many=True, fields=fields, default_fields=True,
+            foreign_key_fields=False, related_fields=False)
+        return list_serializer.dump(query_result, many=True)
 
     def _deserialize(self, value, attr, data, **kwargs):
         raise NotImplementedError(
