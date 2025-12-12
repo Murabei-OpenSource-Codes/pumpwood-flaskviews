@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.43] - 2025-12-12
+### Added
+- No adds
+
+### Fix
+- Fix `LocalForeignKeyField` breaking when fk was None.
+
+### Changed
+- Refactor code.
+
 ## [1.3.42] - 2025-11-25
 ### Added
 - Add new fields for foreign_key and related for local models using database
