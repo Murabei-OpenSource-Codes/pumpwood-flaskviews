@@ -2,6 +2,7 @@
 """Classes and function for authetication and permission."""
 import urllib.parse
 import requests
+import copy
 from loguru import logger
 from flask import request as flask_request
 from flask import g
@@ -76,12 +77,15 @@ class AuthFactory:
         return wrapped
 
     @classmethod
-    def build_hash_dict(cls, token: str, ingress_request: str,
-                        request_method: str = None, path: str = None,
-                        end_point: str = None, first_arg: str = None,
-                        second_arg: str = None) -> dict:
+    def get_authorization_hash_dict(cls, token: str, ingress_request: str,
+                                    request_method: str = None,
+                                    path: str = None,
+                                    end_point: str = None,
+                                    first_arg: str = None,
+                                    second_arg: str = None) -> dict:
         """Build a dictonary to be used as hash dict for diskcache."""
         return {
+            'context': 'authorization',
             'token': token,
             'ingress_request': ingress_request,
             'request_method': request_method,
@@ -117,7 +121,7 @@ class AuthFactory:
         ingress_request = flask_request.headers.get(
             'X-PUMPWOOD-Ingress-Request', 'NOT-EXTERNAL')
 
-        hash_dict = cls.build_hash_dict(
+        hash_dict = cls.get_authorization_hash_dict(
             token=token, ingress_request=ingress_request,
             request_method=request_method, path=path,
             end_point=end_point, first_arg=first_arg,
@@ -152,8 +156,15 @@ class AuthFactory:
 
         authorization_data = resp.json()
         default_cache.set(hash_dict=hash_dict, value=authorization_data)
-        g.user = authorization_data
         return flask_request
+
+    @classmethod
+    def get_user_hash_dict(cls, token: str) -> dict:
+        """Get user hash dict for logged user."""
+        return {
+            'context': 'logged-user',
+            'token': token
+        }
 
     @classmethod
     def retrieve_authenticated_user(cls):
@@ -162,30 +173,57 @@ class AuthFactory:
         Args:
             token (str): Token used in authentication.
         """
-        if cls.dummy_auth is True:
-            return {"pk": 1, "username": "dummy_auth", "model_class": "User"}
-
+        # Raise errors if token is not set
         if AuthFactory.server_url is None:
             raise exceptions.PumpWoodUnauthorized(
                 "AuthFactory.server_url not set")
 
-        token = flask_request.headers.get('Authorization')
-        if token is None:
+        auth_header = cls.get_auth_header()
+        if auth_header['Authorization'] is None:
             raise exceptions.PumpWoodUnauthorized(
                 'No authorization token provided')
 
+        # Try to fech logged user from g object (intra request cache)
+        user = getattr(g, 'user', None)
+        if user is not None:
+            logger.info('get g cached user')
+            return user
+
+        # Try to get user from cache
+        hash_dict = cls.get_user_hash_dict(
+            token=auth_header['Authorization'])
+        user = default_cache.get(hash_dict=hash_dict)
+        if user is not None:
+            logger.info('get diskcached user')
+            g.user = user
+            return user
+
+        ############################################
+        # Fetch user information from auth service #
         url = urllib.parse.urljoin(
             AuthFactory.server_url,
             '/rest/registration/retrieveauthenticateduser/')
 
-        headers = {'Authorization': token}
-        user_response = requests.get(url, headers=headers, timeout=60)
+        # Retry 3 times
+        user_response = None
+        for _ in range(3):
+            user_response = requests.get(
+                url, headers=auth_header, timeout=10)
+            if user_response.status_code in [200, 401]:
+                break
+
         if user_response.status_code != 200:
             raise exceptions.PumpWoodUnauthorized('Token autorization failed')
-        return user_response.json()
+        user_data = user_response.json()
+
+        #########################################
+        # Set inforamtion on cache and g object #
+        g.user = user_data
+        default_cache.set(hash_dict=hash_dict, value=user_data)
+        return user_data
 
     @classmethod
     def get_auth_header(cls):
         """Return auth header to use on microservice."""
         token = flask_request.headers.get('Authorization', None)
-        return {'Authorization': token}
+        return copy.deepcopy({'Authorization': token})

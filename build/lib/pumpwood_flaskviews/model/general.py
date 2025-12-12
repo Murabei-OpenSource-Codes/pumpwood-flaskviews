@@ -76,9 +76,9 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
                 exclude_dict=exclude_dict,
                 order_by=order_by)
         if limit is None:
-            return query_result.all()
+            return query_result
         else:
-            return query_result.limit(limit).all()
+            return query_result.limit(limit)
 
     @classmethod
     def default_query_get(cls, pk: str | int,

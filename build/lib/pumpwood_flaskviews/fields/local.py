@@ -213,6 +213,11 @@ class LocalForeignKeyField(Field):
             object_pk = CompositePkBase64Converter.dump(
                 obj=obj, primary_keys=primary_keys)
 
+        # When the foreign_keys are None (not set), return a None
+        # for object
+        if object_pk is None:
+            return None
+
         # Retrive data from localcache to reduce calls to backend.
         cache_data = self._retrieve_cache(
             object_pk=object_pk, fields=self.fields)
