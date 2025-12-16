@@ -40,12 +40,11 @@ class ChoiceField(fields.Field):
 
     def _validate_choice(self, value):
         """Validate choices at the field."""
-        val_choices = [x[0] for x in self.choices]
-        # Add None to possible choices if allow_none is True
-        if self.allow_none:
-            val_choices.append(None)
+        if self.allow_none and value is None:
+            return None
 
         check_value = None
+        val_choices = [x[0] for x in self.choices]
         if isinstance(value, str):
             check_value = value
         else:
@@ -64,7 +63,6 @@ class ChoiceField(fields.Field):
         return None
 
     def _deserialize(self, value, attr, data):
-        # Not checking if value is a string breaks saving the object.
         if type(value) is str:
             return value
         else:

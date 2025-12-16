@@ -1,6 +1,7 @@
 """Module for auxiliary fuctions for fields."""
 from typing import Any
 from marshmallow import fields, missing
+from pumpwood_communication.exceptions import PumpWoodForbidden
 
 
 def _get_overwrite_audit(field: fields.Field, data: dict,

@@ -1,9 +1,7 @@
 """Pumpwood Marshmellow readonly fields."""
-import datetime
-from typing import Any
 from marshmallow import fields, missing
 from pumpwood_flaskviews.auth import AuthFactory
-from pumpwood_flaskviews.fields.general import ChoiceField
+from pumpwood_flaskviews.fields.aux import _get_overwrite_audit
 from pumpwood_communication.exceptions import PumpWoodObjectSavingException
 
 
@@ -13,9 +11,7 @@ class ReadOnlyChoiceField(fields.Field):
     pumpwood_read_only = True
     """Used on view to retrieve if field is read only for pumpwood."""
 
-    def __init__(self, *args, choices: list = None,
-                 non_superuser_choices: list = None,
-                 **kwargs):
+    def __init__(self, *args, choices: list = None, **kwargs):
         """__init__.
 
         Choices must be passed as a list of tuples/lists containing code,
@@ -42,23 +38,19 @@ class ReadOnlyChoiceField(fields.Field):
             **kwargs:
                 Other named arguments for Marshmellow fields.
         """
-        if non_superuser_choices is None:
-            non_superuser_choices = list
         self.choices = choices
-        self.non_superuser_choices = non_superuser_choices
-        validators = kwargs.pop("validate", [])
-        if self.choices:
-            validators.append(self._validate_choice)
-        super().__init__(validate=validators, *args, **kwargs)
+        kwargs['allow_none'] = True
+        kwargs['dump_only'] = False
+        # kwargs['dump_only'] = True
+        super().__init__(*args, **kwargs)
 
     def _validate_choice(self, value):
         """Validate choices at the field."""
-        val_choices = [x[0] for x in self.choices]
-        # Add None to possible choices if allow_none is True
-        if self.allow_none:
-            val_choices.append(None)
+        if self.allow_none and value is None:
+            return None
 
         check_value = None
+        val_choices = [x[0] for x in self.choices]
         if isinstance(value, str):
             check_value = value
         else:
@@ -76,9 +68,18 @@ class ReadOnlyChoiceField(fields.Field):
             return value.code
         return None
 
-    def _deserialize(self, value, attr, data):
-        # Not checking if value is a string breaks saving the object.
-        if type(value) is str:
-            return value
+    def deserialize(self, value, attr, data, **kwargs):
+        """Reimplement deserialize function."""
+        current_user = AuthFactory.retrieve_authenticated_user()
+        audit_value = _get_overwrite_audit(
+            field=self, data=data, current_user=current_user)
+
+        if audit_value is missing:
+            return missing
+
+        # Validate if value is in valid choices
+        self._validate_choice(value=audit_value)
+        if type(audit_value) is str:
+            return audit_value
         else:
-            return value.code
+            return audit_value.code
