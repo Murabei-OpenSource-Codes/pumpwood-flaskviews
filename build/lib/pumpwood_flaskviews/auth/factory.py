@@ -144,7 +144,6 @@ class AuthFactory:
                     'request_method': request_method,
                     'path': path, 'end_point': end_point,
                     'first_arg': first_arg, 'second_arg': second_arg,
-                    'payload': payload_text[:300],
                     'ingress_request': ingress_request},
                 headers=auth_headers, timeout=60)
 
