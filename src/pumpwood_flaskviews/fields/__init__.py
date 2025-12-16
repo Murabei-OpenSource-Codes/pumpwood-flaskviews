@@ -8,10 +8,12 @@ from .microservice import (
 from .local import (
     LocalForeignKeyField, LocalRelatedField)
 from .encrypt import EncryptedField
+from .readonly import ReadOnlyChoiceField
 
 
 __all__ = [
     CreatedByIdField, ModifiedByIdField, CreatedAtField, ModifiedAtField,
     GeometryField, ChoiceField, PrimaryKeyField,
     MicroserviceForeignKeyField, MicroserviceRelatedField,
-    EncryptedField, LocalForeignKeyField, LocalRelatedField]
+    EncryptedField, LocalForeignKeyField, LocalRelatedField,
+    ReadOnlyChoiceField]
