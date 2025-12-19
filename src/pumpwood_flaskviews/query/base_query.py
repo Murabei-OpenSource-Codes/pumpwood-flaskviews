@@ -1,5 +1,6 @@
 """Module to filter row permission."""
 import abc
+import json
 from flask_sqlalchemy.query import Query
 from sqlalchemy.orm import DeclarativeBase
 from pumpwood_flaskviews.inspection import model_has_column
@@ -96,7 +97,7 @@ class BaseQueryRowPermission(BaseQueryABC):
         # Check row permission associated with user
         else:
             row_permission_set = [
-                x['pk'] for x in user_info['row_permission_set']]
+                x['pk'] for x in user_info['all_row_permisson_set']]
             temp_col = getattr(model, self.row_permission_col)
             return query.filter(temp_col.in_(row_permission_set))
 
