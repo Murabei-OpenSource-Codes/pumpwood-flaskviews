@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [1.3.48] - 2025-12-29
+### Added
+- Add `query_list` and `query_get` functions to base model to list and get
+  objects without applying base filter.
+
+### Fix
+- No fix.
+
+### Changed
+- No change.
+
+
 ## [1.3.47] - 2025-12-12
 ### Added
 - No adds
