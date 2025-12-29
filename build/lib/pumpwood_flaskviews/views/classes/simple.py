@@ -228,21 +228,14 @@ class PumpWoodFlaskView(View):
         Return:
             Returns a SQLAlchemy object with corresponding primary key.
         """
-        converted_pk = CompositePkBase64Converter.load(pk)
-        if isinstance(converted_pk, (int, float)):
-            # If a numeric data is passed as pk it is associated with
-            # 'id' field, it is necessary to convert to a dict to unpack
-            # on filter_by
-            converted_pk = {'id': converted_pk}
-
         # Use base query to filter object acording to user's permission
         tmp_base_query = cls.model_class.base_query\
             .add_filter(model=cls.model_class)
 
         # Since base query inject a filter retricting user information
         # it is not possible to use .get
-        model_object = tmp_base_query\
-            .filter_by(**converted_pk).one()
+        model_object = cls.model_class.default_query_get(
+            pk=pk, base_query=tmp_base_query)
         return model_object
 
     @classmethod
