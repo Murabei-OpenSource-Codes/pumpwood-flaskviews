@@ -1,6 +1,5 @@
 """Module to filter row permission."""
 import abc
-import json
 from flask_sqlalchemy.query import Query
 from sqlalchemy.orm import DeclarativeBase
 from pumpwood_flaskviews.inspection import model_has_column
