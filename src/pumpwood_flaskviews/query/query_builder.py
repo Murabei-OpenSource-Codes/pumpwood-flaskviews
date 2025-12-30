@@ -361,7 +361,7 @@ class SqlalchemyQueryMisc():
     def sqlalchemy_kward_query(cls, object_model, base_query: Query = None,
                                filter_dict: dict = {},
                                exclude_dict: dict = {},
-                               order_by: list[str] = []):
+                               order_by: list[str] = []) -> Query:
         """Build SQLAlchemy engine string according to database parameters.
 
         Args:
@@ -438,7 +438,7 @@ class SqlalchemyQueryMisc():
     @classmethod
     def aggregate(cls, session, object_model,
                   query: Query, group_by: list[str],
-                  agg: dict, order_by: list[str] = []):
+                  agg: dict, order_by: list[str] = []) -> Query:
         """Aggregate results using group_by and agg.
 
         Args:

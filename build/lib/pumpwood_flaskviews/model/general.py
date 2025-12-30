@@ -37,13 +37,34 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
     or object ownership."""
 
     @classmethod
-    def default_filter_query(cls, query: Query = None) -> Query:
+    def default_filter_query(cls, query: Query = None,
+        filter_dict: dict = None, exclude_dict: dict = None,
+        order_by: list[str] = None) -> Query:
         """Create a query with defailt filter.
 
         Use base query object to add default filter to objects. Base query
         object might use auth_header.
+
+        Args:
+            query (Query):
+                Query used as starting point.
+            filter_dict (dict):
+                Dictionary to be used in filter operations.
+                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
+            exclude_dict (dict):
+                Dictionary to be used in filter operations.
+                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
+            order_by (list):
+                Dictionary to be used in filter operations.
+                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
         """
-        return cls.base_query.add_filter(model=cls, query=query)
+        filter_dict = {} if filter_dict is None else filter_dict
+        exclude_dict = {} if exclude_dict is None else exclude_dict
+        order_by = [] if order_by is None else order_by
+
+        return cls.base_query.add_filter(
+            model=cls, query=query, filter_dict=filter_dict,
+            exclude_dict=exclude_dict, order_by=order_by)
 
     @classmethod
     def default_query_list(cls, filter_dict: None | dict = None,
@@ -75,7 +96,9 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
         exclude_dict = {} if exclude_dict is None else exclude_dict
         order_by = [] if order_by is None else order_by
 
-        tmp_base_query = cls.default_filter_query(query=base_query)
+        tmp_base_query = cls.default_filter_query(
+            query=base_query, filter_dict=filter_dict,
+            exclude_dict=exclude_dict, order_by=order_by)
         query_result = SqlalchemyQueryMisc\
             .sqlalchemy_kward_query(
                 object_model=cls,

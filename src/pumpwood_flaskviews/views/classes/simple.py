@@ -22,7 +22,6 @@ from geoalchemy2.types import Geometry
 from marshmallow import missing
 from pumpwood_communication import exceptions
 from pumpwood_communication.microservices import PumpWoodMicroService
-from pumpwood_communication.serializers import CompositePkBase64Converter
 from pumpwood_communication.cache import default_cache
 from pumpwood_flaskviews.sqlalchemy import get_session
 
@@ -1367,8 +1366,7 @@ class PumpWoodFlaskView(View):
                 object_model=self.model_class,
                 base_query=base_query,
                 filter_dict=filter_dict,
-                exclude_dict=exclude_dict)\
-            .all()
+                exclude_dict=exclude_dict)
 
         pd_results = pd.DataFrame(
             SqlalchemyQueryMisc.aggregate(
