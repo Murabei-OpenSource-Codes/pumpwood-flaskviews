@@ -24,6 +24,7 @@ src/pumpwood_flaskviews/fields/general.py
 src/pumpwood_flaskviews/fields/local.py
 src/pumpwood_flaskviews/fields/microservice.py
 src/pumpwood_flaskviews/fields/readonly.py
+src/pumpwood_flaskviews/fields/row_permission.py
 src/pumpwood_flaskviews/inspection/__init__.py
 src/pumpwood_flaskviews/inspection/models.py
 src/pumpwood_flaskviews/model/__init__.py

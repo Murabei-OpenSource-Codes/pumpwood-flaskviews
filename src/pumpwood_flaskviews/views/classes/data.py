@@ -164,8 +164,9 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
         """Bulk save data.
 
         Args:
-            data_to_save(list): List of dictionaries which must have
-                                self.expected_cols_bulk_save.
+            data_to_save(list):
+                List of dictionaries which must have
+                self.expected_cols_bulk_save.
 
         Return:
             Dictionary with ['saved_count'] for total of saved objects.
