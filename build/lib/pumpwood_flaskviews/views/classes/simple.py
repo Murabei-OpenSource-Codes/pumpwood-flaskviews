@@ -227,8 +227,6 @@ class PumpWoodFlaskView(View):
         Return:
             Returns a SQLAlchemy object with corresponding primary key.
         """
-        print("pumpwood_pk_get:", pk)
-
         # Use base query to filter object acording to user's permission
         tmp_base_query = cls.model_class.base_query\
             .add_filter(model=cls.model_class)
@@ -1299,10 +1297,7 @@ class PumpWoodFlaskView(View):
             # Create a serializer to serialize the object to return the value
             # at the action call
             temp_serializer = self.serializer(many=False, default_fields=True)
-            print("temp_serializer:", temp_serializer)
-
             object_dict = temp_serializer.dump(model_object)
-            print("object_dict:", object_dict)
 
         loaded_parameters = load_action_parameters(action_fun, parameters)
         result = action_fun(**loaded_parameters)

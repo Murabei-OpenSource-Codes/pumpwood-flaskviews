@@ -46,7 +46,6 @@ class RowPermissionField(fields.Integer):
                     "user_row_permission_set": row_permission_set,
                     "attr": attr})
         else:
-            print('_validate_user_access')
             return value
 
     def _deserialize(self, value, attr=None, data=None, **kwargs):
