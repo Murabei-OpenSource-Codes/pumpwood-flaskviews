@@ -1,10 +1,12 @@
 """Pumpwood Marshmellow microservice fields."""
 import copy
+from loguru import logger
 from typing import List, Dict, Any, Union
 from marshmallow.fields import Field
 from pumpwood_communication import exceptions
 from pumpwood_communication.serializers import CompositePkBase64Converter
 from pumpwood_communication.microservices import PumpWoodMicroService
+from pumpwood_flaskviews.auth import AuthFactory
 from pumpwood_flaskviews.config import (
     SERIALIZER_FK_CACHE_TIMEOUT)
 
@@ -113,10 +115,60 @@ class MicroserviceForeignKeyField(Field):
                 model_class=self.model_class, pk=object_pk,
                 fields=self.fields, use_disk_cache=True,
                 disk_cache_expire=SERIALIZER_FK_CACHE_TIMEOUT)
+
         except exceptions.PumpWoodObjectDoesNotExist:
+            user = AuthFactory.retrieve_authenticated_user()
             return {
                 "model_class": self.model_class,
-                "__error__": 'PumpWoodObjectDoesNotExist'}
+                "__error__": 'PumpWoodObjectDoesNotExist',
+                "payload": {
+                    "pk": object_pk,
+                    "requester_username": user['username']}}
+
+        except exceptions.PumpWoodUnauthorized:
+            user = AuthFactory.retrieve_authenticated_user()
+            return {
+                "model_class": self.model_class,
+                "__error__": 'PumpWoodUnauthorized',
+                "__display_field__": (
+                    "Your access token expired, login again."),
+                "payload": {
+                    "pk": object_pk,
+                    "model_class": self.model_class,
+                    "requester_username": user['username']}}
+
+        except exceptions.PumpWoodForbidden:
+            user = AuthFactory.retrieve_authenticated_user()
+            return {
+                "model_class": self.model_class,
+                "__error__": 'PumpWoodForbidden',
+                "__display_field__": (
+                    "You do not have access to this end-point"),
+                "payload": {
+                    "pk": object_pk,
+                    "model_class": self.model_class,
+                    "requester_username": user['username']}}
+
+        except Exception:
+            user = AuthFactory.retrieve_authenticated_user()
+            error_msg = (
+                "Exception no caught when trying to retrieve FK using "
+                "microservice.\n"
+                "Object Model class and PK: [{model_class}] [{pk}]\n"
+                "Username and PK:[{username}] [{user_id}]")\
+                .format(
+                    model_class=self.model_class, pk=object_pk,
+                    username=user['username'], user_id=user['pk'])
+            logger.exception(error_msg)
+            return {
+                "model_class": self.model_class,
+                "__error__": 'PumpWoodOtherException',
+                "__display_field__": (
+                    "Something went wrong, please contact support"),
+                "payload": {
+                    "pk": object_pk,
+                    "model_class": self.model_class,
+                    "requester_username": user['username']}}
 
         if self.display_field is not None:
             if self.display_field not in object_data.keys():
@@ -316,11 +368,76 @@ class MicroserviceRelatedField(Field):
         order_by = self._get_list_arg_order_by(obj)
         fields = self._get_list_arg_fields(obj)
 
-        return self.microservice.list_without_pag(
-            model_class=self.model_class,
-            filter_dict=filter_dict, exclude_dict=exclude_dict,
-            order_by=order_by, fields=fields,
-            default_fields=True)
+        try:
+            return self.microservice.list_without_pag(
+                model_class=self.model_class,
+                filter_dict=filter_dict, exclude_dict=exclude_dict,
+                order_by=order_by, fields=fields,
+                default_fields=True)
+
+        except exceptions.PumpWoodObjectDoesNotExist:
+            user = AuthFactory.retrieve_authenticated_user()
+            return {
+                "model_class": self.model_class,
+                "__error__": 'PumpWoodObjectDoesNotExist',
+                "payload": {
+                    "filter_dict": filter_dict, "exclude_dict": exclude_dict,
+                    "order_by": order_by, "fields": fields,
+                    "requester_username": user['username']}}
+
+        except exceptions.PumpWoodUnauthorized:
+            user = AuthFactory.retrieve_authenticated_user()
+            return {
+                "model_class": self.model_class,
+                "__error__": 'PumpWoodUnauthorized',
+                "__display_field__": (
+                    "Your access token expired, login again."),
+                "payload": {
+                    "filter_dict": filter_dict, "exclude_dict": exclude_dict,
+                    "order_by": order_by, "fields": fields,
+                    "requester_username": user['username']}}
+
+        except exceptions.PumpWoodForbidden:
+            user = AuthFactory.retrieve_authenticated_user()
+            return {
+                "model_class": self.model_class,
+                "__error__": 'PumpWoodForbidden',
+                "__display_field__": (
+                    "You do not have access to this end-point"),
+                "payload": {
+                    "filter_dict": filter_dict, "exclude_dict": exclude_dict,
+                    "order_by": order_by, "fields": fields,
+                    "requester_username": user['username']}}
+
+        except Exception:
+            user = AuthFactory.retrieve_authenticated_user()
+            error_msg = (
+                "Exception no caught when trying to retrieve related using "
+                "microservice.\n"
+                "Object Model class and PK: [{model_class}]\n"
+                "Username and PK:[{username}] [{user_id}]\n"
+                "Filter dict: {filter_dict}\n"
+                "Exclude dict: {exclude_dict}\n"
+                "Order by: {order_by}\n"
+                "Fields: {fields}\n")\
+                .format(
+                    model_class=self.model_class,
+                    username=user['username'],
+                    user_id=user['pk'],
+                    filter_dict=filter_dict,
+                    exclude_dict=exclude_dict,
+                    order_by=order_by,
+                    fields=fields)
+            logger.exception(error_msg)
+            return {
+                "model_class": self.model_class,
+                "__error__": 'PumpWoodOtherException',
+                "__display_field__": (
+                    "Something went wrong, please contact support"),
+                "payload": {
+                    "filter_dict": filter_dict, "exclude_dict": exclude_dict,
+                    "order_by": order_by, "fields": fields,
+                    "requester_username": user['username']}}
 
     def _deserialize(self, value, attr, data, **kwargs):
         raise NotImplementedError(

@@ -1,6 +1,7 @@
 """Module to filter row permission."""
 import abc
 import json
+from sqlalchemy import or_
 from flask import request
 from flask_sqlalchemy.query import Query
 from sqlalchemy.orm import DeclarativeBase
@@ -194,8 +195,12 @@ class BaseQueryRowPermission(BaseQueryABC):
         else:
             row_permission_set = [
                 x['pk'] for x in user_info['all_row_permisson_set']]
+
+            # Add None to filter
             temp_col = getattr(model, self.row_permission_col)
-            return query.filter(temp_col.in_(row_permission_set))
+            return query.filter(or_(
+                temp_col.in_(row_permission_set),
+                temp_col.is_(None)))
 
 
 class BaseQueryOwner(BaseQueryABC):

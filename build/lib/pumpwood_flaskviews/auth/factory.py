@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 """Classes and function for authetication and permission."""
-import json
 import copy
 import time
 import requests
@@ -90,7 +89,6 @@ class AuthFactory:
             time.sleep(0.01)
 
         if row_permission_response.status_code != 200:
-            print('row_permission_response:', row_permission_response.text)
             raise exceptions.PumpWoodException(
                 'It was not possible to retrieve user row permissions',
                 payload=row_permission_response.json())

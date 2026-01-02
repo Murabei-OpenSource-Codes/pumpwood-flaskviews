@@ -144,8 +144,9 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
 
         # Since base query inject a filter retricting user information
         # it is not possible to use .get
-        model_object = tmp_base_query\
-            .filter_by(**converted_pk).first()
+        tmp_base_query_2 = tmp_base_query\
+            .filter_by(**converted_pk)
+        model_object = tmp_base_query_2.first()
 
         if model_object is None and raise_error:
             message = "Requested object {model_class}[{pk}] not found."
