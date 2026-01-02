@@ -22,7 +22,6 @@ from geoalchemy2.types import Geometry
 from marshmallow import missing
 from pumpwood_communication import exceptions
 from pumpwood_communication.microservices import PumpWoodMicroService
-from pumpwood_communication.serializers import CompositePkBase64Converter
 from pumpwood_communication.cache import default_cache
 from pumpwood_flaskviews.sqlalchemy import get_session
 
@@ -228,12 +227,7 @@ class PumpWoodFlaskView(View):
         Return:
             Returns a SQLAlchemy object with corresponding primary key.
         """
-        converted_pk = CompositePkBase64Converter.load(pk)
-        if isinstance(converted_pk, (int, float)):
-            # If a numeric data is passed as pk it is associated with
-            # 'id' field, it is necessary to convert to a dict to unpack
-            # on filter_by
-            converted_pk = {'id': converted_pk}
+        print("pumpwood_pk_get:", pk)
 
         # Use base query to filter object acording to user's permission
         tmp_base_query = cls.model_class.base_query\
@@ -241,8 +235,8 @@ class PumpWoodFlaskView(View):
 
         # Since base query inject a filter retricting user information
         # it is not possible to use .get
-        model_object = tmp_base_query\
-            .filter_by(**converted_pk).one()
+        model_object = cls.model_class.default_query_get(
+            pk=pk, base_query=tmp_base_query)
         return model_object
 
     @classmethod
@@ -1305,8 +1299,10 @@ class PumpWoodFlaskView(View):
             # Create a serializer to serialize the object to return the value
             # at the action call
             temp_serializer = self.serializer(many=False, default_fields=True)
-            object_dict = temp_serializer\
-                .dump(model_object, many=False)
+            print("temp_serializer:", temp_serializer)
+
+            object_dict = temp_serializer.dump(model_object)
+            print("object_dict:", object_dict)
 
         loaded_parameters = load_action_parameters(action_fun, parameters)
         result = action_fun(**loaded_parameters)
@@ -1374,8 +1370,7 @@ class PumpWoodFlaskView(View):
                 object_model=self.model_class,
                 base_query=base_query,
                 filter_dict=filter_dict,
-                exclude_dict=exclude_dict)\
-            .all()
+                exclude_dict=exclude_dict)
 
         pd_results = pd.DataFrame(
             SqlalchemyQueryMisc.aggregate(
@@ -1436,10 +1431,15 @@ class PumpWoodFlaskView(View):
                 read_only = dump_only or pumpwood_read_only
 
                 nullable = getattr(temp_field, 'allow_none')
-                ser_field_default = getattr(temp_field, 'dump_default')
-                ser_field_default = (
-                    None if ser_field_default is missing
-                    else ser_field_default)
+                ser_field_default = getattr(temp_field, 'load_default')
+
+                # If dump default is not vaiable
+                if ser_field_default is missing:
+                    if pumpwood_read_only:
+                        ser_field_default = getattr(
+                            temp_field, 'pumpwood_default', None)
+                    else:
+                        ser_field_default = None
             else:
                 nullable = x.nullable
 

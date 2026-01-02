@@ -9,6 +9,14 @@ from pumpwood_communication.exceptions import PumpWoodObjectDoesNotExist
 # from pumpwood_flaskviews.sqlalchemy import get_session
 
 
+def _try_convert_int(value: str):
+    """Helper function to set type of the pk at error payload."""
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return value
+
+
 class FlaskPumpWoodBaseModel(DeclarativeBase):
     """Flask Sqlalchemy Database Connection.
 
@@ -29,13 +37,34 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
     or object ownership."""
 
     @classmethod
-    def default_filter_query(cls, query: Query = None) -> Query:
+    def default_filter_query(cls, query: Query = None,
+        filter_dict: dict = None, exclude_dict: dict = None,
+        order_by: list[str] = None) -> Query:
         """Create a query with defailt filter.
 
         Use base query object to add default filter to objects. Base query
         object might use auth_header.
+
+        Args:
+            query (Query):
+                Query used as starting point.
+            filter_dict (dict):
+                Dictionary to be used in filter operations.
+                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
+            exclude_dict (dict):
+                Dictionary to be used in filter operations.
+                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
+            order_by (list):
+                Dictionary to be used in filter operations.
+                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
         """
-        return cls.base_query.add_filter(model=cls, query=query)
+        filter_dict = {} if filter_dict is None else filter_dict
+        exclude_dict = {} if exclude_dict is None else exclude_dict
+        order_by = [] if order_by is None else order_by
+
+        return cls.base_query.add_filter(
+            model=cls, query=query, filter_dict=filter_dict,
+            exclude_dict=exclude_dict, order_by=order_by)
 
     @classmethod
     def default_query_list(cls, filter_dict: None | dict = None,
@@ -67,11 +96,13 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
         exclude_dict = {} if exclude_dict is None else exclude_dict
         order_by = [] if order_by is None else order_by
 
-        base_query = cls.default_filter_query()
+        tmp_base_query = cls.default_filter_query(
+            query=base_query, filter_dict=filter_dict,
+            exclude_dict=exclude_dict, order_by=order_by)
         query_result = SqlalchemyQueryMisc\
             .sqlalchemy_kward_query(
                 object_model=cls,
-                base_query=base_query,
+                base_query=tmp_base_query,
                 filter_dict=filter_dict,
                 exclude_dict=exclude_dict,
                 order_by=order_by)
@@ -113,12 +144,100 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
 
         # Since base query inject a filter retricting user information
         # it is not possible to use .get
-        model_object = tmp_base_query\
-            .filter_by(**converted_pk).one()
+        tmp_base_query_2 = tmp_base_query\
+            .filter_by(**converted_pk)
+        model_object = tmp_base_query_2.first()
 
         if model_object is None and raise_error:
             message = "Requested object {model_class}[{pk}] not found."
             raise PumpWoodObjectDoesNotExist(
                 message=message, payload={
-                    "model_class": cls.__name__, "pk": pk})
+                    "model_class": cls.__name__,
+                    "pk": _try_convert_int(pk)})
+        return model_object
+
+    @classmethod
+    def query_list(cls, filter_dict: None | dict = None,
+                   exclude_dict: dict = None,
+                   order_by: list = None, limit: int = None,
+                   base_query: Query = None) -> Query:
+        """Create a list query using parameter and without default filters.
+
+        Args:
+            filter_dict (dict):
+                Dictionary to be used in filter operations.
+                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
+            exclude_dict (dict):
+                Dictionary to be used in filter operations.
+                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
+            order_by (list):
+                Dictionary to be used in filter operations.
+                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
+            limit (int):
+                Number of objects to be returned.
+            base_query (Query):
+                A base query to be used as initial filter.
+
+        Returns:
+            Results of query.
+        """
+        # Set list and dicts in the fuction to no bug with pointers
+        filter_dict = {} if filter_dict is None else filter_dict
+        exclude_dict = {} if exclude_dict is None else exclude_dict
+        order_by = [] if order_by is None else order_by
+        tmp_base_query = cls.query if base_query is None else base_query
+
+        query_result = SqlalchemyQueryMisc\
+            .sqlalchemy_kward_query(
+                object_model=cls,
+                base_query=tmp_base_query,
+                filter_dict=filter_dict,
+                exclude_dict=exclude_dict,
+                order_by=order_by)
+        if limit is None:
+            return query_result
+        else:
+            return query_result.limit(limit)
+
+    @classmethod
+    def query_get(cls, pk: str | int, base_query: Query = None,
+                  raise_error: bool = True) -> object:
+        """Get model_class object using pumpwood pk without base query filter.
+
+        Pumpwood pk may be integers and base64 strings coding a dictionary
+        with composite primary keys. This function abstract SQLAlchemy
+        query.get to treat both possibilities.
+
+        Args:
+            pk (str, int):
+                Pumpwood primary key.
+            base_query (Query):
+                A base query to be used as initial filter.
+            raise_error (bool):
+                Raise error if object was not found.
+
+        Return:
+            Returns a SQLAlchemy object with corresponding primary key.
+        """
+        converted_pk = CompositePkBase64Converter.load(pk)
+        if isinstance(converted_pk, (int, float)):
+            # If a numeric data is passed as pk it is associated with
+            # 'id' field, it is necessary to convert to a dict to unpack
+            # on filter_by
+            converted_pk = {'id': converted_pk}
+
+        # Use base query to filter object acording to user's permission
+        tmp_base_query = cls.query if base_query is None else base_query
+
+        # Since base query inject a filter retricting user information
+        # it is not possible to use .get
+        model_object = tmp_base_query\
+            .filter_by(**converted_pk).first()
+
+        if model_object is None and raise_error:
+            message = "Requested object {model_class}[{pk}] not found."
+            raise PumpWoodObjectDoesNotExist(
+                message=message, payload={
+                    "model_class": cls.__name__,
+                    "pk": _try_convert_int(pk)})
         return model_object

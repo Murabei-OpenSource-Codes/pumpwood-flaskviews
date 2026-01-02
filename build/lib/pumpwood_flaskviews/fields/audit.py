@@ -21,7 +21,7 @@ class CreatedByIdField(fields.Integer):
         """__init__."""
         kwargs['allow_none'] = True
         kwargs['dump_only'] = False
-        kwargs['default'] = 'Logged user at creation'
+        kwargs['load_default'] = 'Logged user at creation'
         super().__init__(*args, **kwargs)
 
     def deserialize(self, value, attr=None, data=None, **kwargs):
@@ -57,7 +57,7 @@ class ModifiedByIdField(fields.Integer):
         """__init__."""
         kwargs['allow_none'] = True
         kwargs['dump_only'] = False
-        kwargs['default'] = 'Logged user at update'
+        kwargs['load_default'] = 'Logged user at update'
         super().__init__(*args, **kwargs)
 
     def deserialize(self, value, attr=None, data=None, **kwargs):
@@ -89,7 +89,7 @@ class CreatedAtField(fields.DateTime):
         """__init__."""
         kwargs['allow_none'] = True
         kwargs['dump_only'] = False
-        kwargs['default'] = 'Datetime at creation'
+        kwargs['load_default'] = 'Datetime at creation'
         super().__init__(*args, **kwargs)
 
     def deserialize(self, value, attr=None, data=None, **kwargs):
@@ -121,7 +121,7 @@ class ModifiedAtField(fields.DateTime):
         """__init__."""
         kwargs['allow_none'] = True
         kwargs['dump_only'] = False
-        kwargs['default'] = 'Datetime at update'
+        kwargs['load_default'] = 'Datetime at update'
         super().__init__(*args, **kwargs)
 
     def deserialize(self, value, attr=None, data=None, **kwargs):

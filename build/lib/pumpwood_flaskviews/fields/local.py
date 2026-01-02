@@ -148,7 +148,39 @@ class LocalForeignKeyField(Field):
             fields (List[str]):
                 Limit the fields that will be returned using microservice.
         """
-        obj = self.model_class.default_query_get(pk=object_pk)
+        try:
+            obj = self.model_class.default_query_get(pk=object_pk)
+
+        except exceptions.PumpWoodObjectDoesNotExist:
+            user = AuthFactory.retrieve_authenticated_user()
+            return {
+                "model_class": self.model_class,
+                "__error__": 'PumpWoodObjectDoesNotExist',
+                "payload": {
+                    "pk": object_pk,
+                    "requester_username": user['username']}}
+
+        except Exception:
+            user = AuthFactory.retrieve_authenticated_user()
+            error_msg = (
+                "Exception no caught when trying to retrieve FK using "
+                "local.\n"
+                "Object Model class and PK: [{model_class}] [{pk}]\n"
+                "Username and PK:[{username}] [{user_id}]")\
+                .format(
+                    model_class=self.model_class, pk=object_pk,
+                    username=user['username'], user_id=user['pk'])
+            logger.exception(error_msg)
+            return {
+                "model_class": self.model_class,
+                "__error__": 'PumpWoodOtherException',
+                "__display_field__": (
+                    "Something went wrong, please contact support"),
+                "payload": {
+                    "pk": object_pk,
+                    "model_class": self.model_class,
+                    "requester_username": user['username']}}
+
         temp_serializer = self.serializer(
             many=False, fields=fields, default_fields=True)
         return temp_serializer.dump(obj)
@@ -436,9 +468,39 @@ class LocalRelatedField(Field):
         order_by = self._get_list_arg_order_by(obj)
         fields = self._get_list_arg_fields(obj)
 
-        query_result = self.model_class.default_query_list(
-            filter_dict=filter_dict, exclude_dict=exclude_dict,
-            order_by=order_by)
+        try:
+            query_result = self.model_class.default_query_list(
+                filter_dict=filter_dict, exclude_dict=exclude_dict,
+                order_by=order_by)
+        except Exception:
+            user = AuthFactory.retrieve_authenticated_user()
+            error_msg = (
+                "Exception no caught when trying to retrieve related using "
+                "local.\n"
+                "Object Model class and PK: [{model_class}]\n"
+                "Username and PK:[{username}] [{user_id}]\n"
+                "Filter dict: {filter_dict}\n"
+                "Exclude dict: {exclude_dict}\n"
+                "Order by: {order_by}\n"
+                "Fields: {fields}\n")\
+                .format(
+                    model_class=self.model_class,
+                    username=user['username'],
+                    user_id=user['pk'],
+                    filter_dict=filter_dict,
+                    exclude_dict=exclude_dict,
+                    order_by=order_by,
+                    fields=fields)
+            logger.exception(error_msg)
+            return {
+                "model_class": self.model_class,
+                "__error__": 'PumpWoodOtherException',
+                "__display_field__": (
+                    "Something went wrong, please contact support"),
+                "payload": {
+                    "filter_dict": filter_dict, "exclude_dict": exclude_dict,
+                    "order_by": order_by, "fields": fields,
+                    "requester_username": user['username']}}
 
         list_serializer = self.serializer(
             many=True, fields=fields, default_fields=True)

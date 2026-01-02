@@ -78,7 +78,7 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
         # Set list and dicts in the fuction to no bug with pointers
         filter_dict = {} if filter_dict is None else filter_dict
         exclude_dict = {} if exclude_dict is None else exclude_dict
-        order_by = self.arg_or_default_order_by(order_by=order_by)
+        order_by = [] if order_by is None else order_by
         columns = [] if columns is None else columns
         self.get_session()
 

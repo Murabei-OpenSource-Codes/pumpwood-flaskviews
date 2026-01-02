@@ -30,11 +30,34 @@ class GeometryField(fields.Field):
 class ChoiceField(fields.Field):
     """Create a marshmallow field to serialize ChoiceFields."""
 
-    def __init__(self, *args, choices=None, **kwargs):
-        """__init__."""
+    def __init__(self, *args, choices: list[tuple] = None, **kwargs):
+        """__init__.
+
+        Args:
+            choices (list[tuple]):
+                Choices that will be used to validate the deserialization of
+                the fields. It must be ser as a list of tuples or lists with
+                ('code', 'User readble') format.
+            *args:
+                Other marshmallow fields position paramerters.
+            **kwargs:
+                Other marshmallow fields named paramerters.
+
+        Example:
+            ```
+            field_choice = ChoiceField(
+                choices=[
+                    ('choice_1', 'This is choice 1'),
+                    ('choice_2', 'This is choice 2'),
+                    ('choice_3', 'This is choice 3'),
+                ])
+            ```
+        """
         self.choices = choices
         validators = kwargs.pop("validate", [])
-        if self.choices:
+
+        # Add choice validation if
+        if self.choices is not None:
             validators.append(self._validate_choice)
         super().__init__(validate=validators, *args, **kwargs)
 
@@ -42,7 +65,6 @@ class ChoiceField(fields.Field):
         """Validate choices at the field."""
         if self.allow_none and value is None:
             return None
-
         check_value = None
         val_choices = [x[0] for x in self.choices]
         if isinstance(value, str):

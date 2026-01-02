@@ -2,6 +2,8 @@
 import os
 import psycopg2
 import sqlalchemy
+import traceback
+from loguru import logger
 from flask import jsonify
 from marshmallow import ValidationError
 from pumpwood_communication import exceptions
@@ -42,6 +44,11 @@ def register_pumpwood_view(app, view, service_object: dict):
     app.add_url_rule(url_no_args, view_func=view_func)
     app.add_url_rule(url_1_args, view_func=view_func)
     app.add_url_rule(url_2_args, view_func=view_func)
+
+    @app.errorhandler(500)
+    @logger.catch
+    def handle_500_error(e):
+        return "Internal Server Error", 500
 
     # Error handlers
     @app.errorhandler(exceptions.PumpWoodException)

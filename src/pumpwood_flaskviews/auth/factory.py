@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """Classes and function for authetication and permission."""
-import urllib.parse
-import requests
 import copy
+import time
+import requests
+import urllib.parse
 from loguru import logger
-from flask import request as flask_request
 from flask import g
+from flask import request as flask_request
 from pumpwood_communication import exceptions
 from pumpwood_communication.cache import default_cache
 from pumpwood_flaskviews.config import MICROSERVICE_URL
@@ -45,6 +46,54 @@ class AuthFactory:
     """Url that will be used to check if user is logged and if it has the right
        permissions"""
     dummy_auth = False
+
+    @classmethod
+    def _get_authenticated_user(cls, auth_header: dict) -> dict:
+        """Request authenticated user from Auth App."""
+        url = urllib.parse.urljoin(
+            AuthFactory.server_url,
+            '/rest/registration/retrieveauthenticateduser/')
+
+        # Retry 3 times
+        user_response = None
+        for _ in range(3):
+            user_response = requests.get(
+                url, headers=auth_header, timeout=10)
+            if user_response.status_code in [200, 401]:
+                break
+
+            # Wait before retry
+            time.sleep(0.01)
+
+        if user_response.status_code != 200:
+            raise exceptions.PumpWoodUnauthorized('Token autorization failed')
+        user_data = user_response.json()
+        return user_data
+
+    @classmethod
+    def _get_user_all_row_permisson(cls, auth_header: dict) -> dict:
+        """Request all row permissions associated with user."""
+        url = urllib.parse.urljoin(
+            AuthFactory.server_url,
+            '/rest/userprofile/actions/self_row_permissions/')
+
+        # Retry 3 times
+        row_permission_response = None
+        for _ in range(3):
+            row_permission_response = requests.post(
+                url, headers=auth_header, timeout=10, json={})
+            if row_permission_response.status_code in [200, 401]:
+                break
+
+            # Wait before retry
+            time.sleep(0.01)
+
+        if row_permission_response.status_code != 200:
+            raise exceptions.PumpWoodException(
+                'It was not possible to retrieve user row permissions',
+                payload=row_permission_response.json())
+        resp_data = row_permission_response.json()
+        return resp_data['result']
 
     @classmethod
     def set_server_url(cls, server_url: str = None):
@@ -197,25 +246,13 @@ class AuthFactory:
             g.user = user
             return user
 
-        ############################################
-        # Fetch user information from auth service #
-        url = urllib.parse.urljoin(
-            AuthFactory.server_url,
-            '/rest/registration/retrieveauthenticateduser/')
+        user_data = cls._get_authenticated_user(auth_header=auth_header)
 
-        # Retry 3 times
-        user_response = None
-        for _ in range(3):
-            user_response = requests.get(
-                url, headers=auth_header, timeout=10)
-            if user_response.status_code in [200, 401]:
-                break
+        # Add all row permission to authenticated user
+        all_row_permisson = cls._get_user_all_row_permisson(
+            auth_header=auth_header)
+        user_data['all_row_permisson_set'] = all_row_permisson
 
-        if user_response.status_code != 200:
-            raise exceptions.PumpWoodUnauthorized('Token autorization failed')
-        user_data = user_response.json()
-
-        #########################################
         # Set inforamtion on cache and g object #
         g.user = user_data
         default_cache.set(hash_dict=hash_dict, value=user_data)
