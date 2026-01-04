@@ -2,7 +2,6 @@
 import os
 import psycopg2
 import sqlalchemy
-import traceback
 from loguru import logger
 from flask import jsonify
 from marshmallow import ValidationError
