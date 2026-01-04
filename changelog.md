@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.3.50] - 2026-01-02
 ### Added
+- `PumpwoodDBGuard` it will add pre and post requests hooks to check if
+  database is avaiable and regen connection if 5 retries. Will also roolback
+  pending session transation and remove session at the end of request.
+
+### Fix
+- No fix.
+
+### Changed
+- No change.
+
+## [1.3.50] - 2026-01-02
+### Added
 - Adjust base filter to allow skip using URL parameter skip_base_query
 - Treat errors when retrieving information from foreign keys
 
