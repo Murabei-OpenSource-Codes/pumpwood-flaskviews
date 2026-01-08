@@ -143,7 +143,8 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
         """
         list_fields = getattr(self.Meta, 'list_fields', None)
         if list_fields is None:
-            return list(self.fields.keys())
+            fields = getattr(self.Meta, 'fields', None)
+            return list(fields.keys())
         return list_fields
 
     def get_foreign_keys(self) -> dict:
