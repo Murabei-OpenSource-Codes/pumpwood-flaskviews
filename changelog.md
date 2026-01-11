@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [1.3.56] - 2026-01-08
+### Added
+- Make list_fields optional, if not set fields will be used.
+
+### Fix
+- No fix.
+
+### Changed
+- No change.
+
 ## [1.3.55] - 2026-01-04
 ### Added
 - `PumpwoodDBGuard` it will add pre and post requests hooks to check if
