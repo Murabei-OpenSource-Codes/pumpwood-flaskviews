@@ -7,6 +7,7 @@ from sqlalchemy.sql import operators
 from sqlalchemy import func
 from sqlalchemy import inspect
 from sqlalchemy import desc
+from pumpwood_flaskviews.query.builders import SqlalchemyOrderBy
 from pumpwood_communication.exceptions import (
     PumpWoodQueryException, PumpWoodNotImplementedError)
 from pumpwood_communication.serializers import CompositePkBase64Converter
@@ -171,7 +172,7 @@ class SqlalchemyQueryMisc():
 
     @classmethod
     def get_related_models_and_columns(cls, object_model, query_dict,
-                                       order=False):
+                                       order: bool = False):
         """Get related model and columns.
 
         Receive a Django like dictionary and return a dictionary with the
@@ -359,9 +360,9 @@ class SqlalchemyQueryMisc():
 
     @classmethod
     def sqlalchemy_kward_query(cls, object_model, base_query: Query = None,
-                               filter_dict: dict = {},
-                               exclude_dict: dict = {},
-                               order_by: list[str] = []) -> Query:
+                               filter_dict: dict = None,
+                               exclude_dict: dict = None,
+                               order_by: list[str] = None) -> Query:
         """Build SQLAlchemy engine string according to database parameters.
 
         Args:
@@ -392,6 +393,10 @@ class SqlalchemyQueryMisc():
                 order_by = ['-value', 'attribute__description'])
 
         """
+        filter_dict = {} if filter_dict is None else filter_dict
+        exclude_dict = {} if exclude_dict is None else exclude_dict
+        order_by = [] if order_by is None else order_by
+
         mapper = inspect(object_model.__table__)
         primary_keys = [
             col.name for col in list(mapper.c) if col.primary_key]
@@ -412,12 +417,11 @@ class SqlalchemyQueryMisc():
             object_model=object_model, query_dict=filter_dict)
         exclude_query = cls.get_related_models_and_columns(
             object_model=object_model, query_dict=exclude_dict)
-        order_query = cls.get_related_models_and_columns(
-            object_model, order_by_dict, order=True)
+        order_query = SqlalchemyOrderBy.build(
+            model=object_model, order_by=order_by)
 
         models = list(
-            filter_query['models'] + exclude_query['models'] +
-            order_query['models'])
+            filter_query['models'] + exclude_query['models'])
 
         # Join models for filters
         q = base_query or object_model.query
@@ -427,12 +431,13 @@ class SqlalchemyQueryMisc():
         # Filter clauses
         for fil in filter_query['columns']:
             q = q.filter(fil['operation'](fil['column'], fil['value']))
+
         # Exclude clauses
         for excl in exclude_query['columns']:
             q = q.filter(~excl['operation'](excl['column'], excl['value']))
+
         # Order clauses
-        for ord in order_query['columns']:
-            q = q.order_by(ord['operation'](ord['column']))
+        q = q.order_by(*order_query)
         return q
 
     @classmethod
