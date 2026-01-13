@@ -406,7 +406,9 @@ class SqlalchemyQueryMisc():
             q = q.filter(~excl['operation'](excl['column'], excl['value']))
 
         # Order clauses
-        q = q.order_by(*order_query)
+        if len(order_by) != 0:
+            q = q.order_by(*order_query)
+
         return q
 
     @classmethod

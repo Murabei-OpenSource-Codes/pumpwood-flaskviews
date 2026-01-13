@@ -189,9 +189,6 @@ class SqlalchemyQueryMisc():
                 A query dict similar to Django queries, with relations and
                 operator divided by "__".
 
-        Kwargs:
-            No extra arguments
-
         Returns:
             dict: Key 'models' indicates models to be used in joins and
             'columns' returns a list o dictionaries with 'column' for model
@@ -409,7 +406,9 @@ class SqlalchemyQueryMisc():
             q = q.filter(~excl['operation'](excl['column'], excl['value']))
 
         # Order clauses
-        q = q.order_by(*order_query)
+        if len(order_by) != 0:
+            q = q.order_by(*order_query)
+
         return q
 
     @classmethod

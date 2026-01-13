@@ -186,5 +186,9 @@ class SqlalchemyOrderBy:
                 If order_by argument point to join, this is not implemented
                 order only using fields of the model.
         """
+        # If order by is None, does not return an empty list
+        if order_by is None or len(order_by) == 0:
+            return []
+
         order_args = cls._build_arguments(model=model, order_by=order_by)
         return cls._build_order_by_clauses(model=model, order_args=order_args)
