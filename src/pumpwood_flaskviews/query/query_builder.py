@@ -189,9 +189,6 @@ class SqlalchemyQueryMisc():
                 A query dict similar to Django queries, with relations and
                 operator divided by "__".
 
-        Kwargs:
-            No extra arguments
-
         Returns:
             dict: Key 'models' indicates models to be used in joins and
             'columns' returns a list o dictionaries with 'column' for model
