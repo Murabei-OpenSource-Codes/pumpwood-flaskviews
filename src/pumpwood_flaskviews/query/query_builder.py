@@ -171,8 +171,7 @@ class SqlalchemyQueryMisc():
     }
 
     @classmethod
-    def get_related_models_and_columns(cls, object_model, query_dict,
-                                       order: bool = False):
+    def get_related_models_and_columns(cls, object_model, query_dict):
         """Get related model and columns.
 
         Receive a Django like dictionary and return a dictionary with the
@@ -189,8 +188,6 @@ class SqlalchemyQueryMisc():
             query_dict (dict):
                 A query dict similar to Django queries, with relations and
                 operator divided by "__".
-            order (bool):
-                If the relation will be used on ordering operations.
 
         Kwargs:
             No extra arguments
@@ -314,45 +311,20 @@ class SqlalchemyQueryMisc():
                                 list(cls._underscore_operators.keys()))
                         })
 
-            if order:
-                if value not in ['asc', 'desc']:
-                    template = "Order value %s not implemented , sup and " + \
-                        "desc available, for column %s. Original query " + \
-                        "string %s"
-                    raise PumpWoodQueryException(
-                        template % (value, column.key, arg))
-                else:
-                    if json_key is not None:
-                        if value == 'desc':
-                            columns_values_filter.append(
-                                {'column': column[json_key].astext,
-                                 'operation': desc})
-                        elif value == 'asc':
-                            columns_values_filter.append(
-                                {'column': column[json_key].astext,
-                                 'operation': lambda c: c})
-                    else:
-                        if value == 'desc':
-                            columns_values_filter.append(
-                                {'column': column, 'operation': desc})
-                        elif value == 'asc':
-                            columns_values_filter.append(
-                                {'column': column, 'operation': lambda c: c})
-            else:
-                # operation_key is not set consider it a exact match
-                if operation_key is None:
-                    operation_key = 'exact'
+            # operation_key is not set consider it a exact match
+            if operation_key is None:
+                operation_key = 'exact'
 
-                if json_key is not None:
-                    columns_values_filter.append(
-                        {'column': column[json_key].astext,
-                         'operation': cls._underscore_operators[operation_key],
-                         'value': value})
-                else:
-                    columns_values_filter.append(
-                        {'column': column,
-                         'operation': cls._underscore_operators[operation_key],
-                         'value': value})
+            if json_key is not None:
+                columns_values_filter.append({
+                    'column': column[json_key].astext,
+                    'operation': cls._underscore_operators[operation_key],
+                    'value': value})
+            else:
+                columns_values_filter.append({
+                    'column': column,
+                    'operation': cls._underscore_operators[operation_key],
+                    'value': value})
 
         return {
             'models': join_models,
