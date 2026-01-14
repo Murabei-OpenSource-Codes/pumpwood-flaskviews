@@ -2,8 +2,7 @@
 import os
 import psycopg2
 import sqlalchemy
-import traceback
-from loguru import logger
+from pumpwood_miscellaneous.error import log_error
 from flask import jsonify
 from marshmallow import ValidationError
 from pumpwood_communication import exceptions
@@ -46,13 +45,14 @@ def register_pumpwood_view(app, view, service_object: dict):
     app.add_url_rule(url_2_args, view_func=view_func)
 
     @app.errorhandler(500)
-    @logger.catch
     def handle_500_error(e):
+        log_error(e)
         return "Internal Server Error", 500
 
     # Error handlers
     @app.errorhandler(exceptions.PumpWoodException)
     def handle_pumpwood_errors(error):
+        log_error(error)
         response = jsonify(error.to_dict())
         response.status_code = error.status_code
         return response
@@ -61,6 +61,7 @@ def register_pumpwood_view(app, view, service_object: dict):
     @app.errorhandler(TypeError)
     def handle_type_errors(error):
         pump_exc = exceptions.PumpWoodException(message=str(error))
+        log_error(pump_exc)
         response = jsonify(pump_exc.to_dict())
         response.status_code = pump_exc.status_code
         return response
@@ -80,6 +81,8 @@ def register_pumpwood_view(app, view, service_object: dict):
 
         pump_exc = ErrorClass(
             message=error_dict['message'], payload=error_dict['payload'])
+
+        log_error(pump_exc)
         response = jsonify(pump_exc.to_dict())
         response.status_code = pump_exc.status_code
         return response
@@ -92,6 +95,8 @@ def register_pumpwood_view(app, view, service_object: dict):
         ErrorClass = exceptions.exceptions_dict.get(error_dict['type']) # NOQA
         pump_exc = ErrorClass(
             message=error_dict['message'], payload=error_dict['payload'])
+
+        log_error(pump_exc)
         response = jsonify(pump_exc.to_dict())
         response.status_code = pump_exc.status_code
         return response
@@ -103,6 +108,8 @@ def register_pumpwood_view(app, view, service_object: dict):
         messages_dict = error.messages
         pump_exc = exceptions.PumpWoodObjectSavingException(
             message=message, payload=messages_dict)
+
+        log_error(pump_exc)
         response = jsonify(pump_exc.to_dict())
         response.status_code = pump_exc.status_code
         return response
