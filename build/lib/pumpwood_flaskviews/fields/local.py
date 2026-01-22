@@ -4,6 +4,9 @@ import copy
 from loguru import logger
 from typing import List, Dict, Any, Union, Callable
 from marshmallow.fields import Field
+from sqlalchemy.inspection import inspect
+from sqlalchemy.orm import Mapper, InstanceState
+from sqlalchemy.exc import NoInspectionAvailable
 from pumpwood_communication import exceptions
 from pumpwood_communication.cache import default_cache
 from pumpwood_communication.serializers import CompositePkBase64Converter
@@ -22,6 +25,27 @@ def _import_function_by_string(module: str | Any) -> Callable:
     return func
 
 
+def _get_sqlalchemy_type(obj: Any) -> str:
+    """Return a string indetifing the type of the SQLAlchemy object.
+
+    Args:
+        obj (Any):
+            An object to check if it is a SQLAlchemy object.
+
+    Returns:
+        Return "instance" if if object is an instance, "class" if it is a
+        class and None if not an SQLAlchemy object.
+    """
+    try:
+        inspected = inspect(obj)
+        if isinstance(inspected, Mapper):
+            return "class"
+        elif isinstance(inspected, InstanceState):
+            return "instance"
+    except NoInspectionAvailable:
+        return "not_sqlalchemy"
+
+
 class LocalForeignKeyField(Field):
     """Serializer field for ForeignKey using local query.
 
@@ -35,7 +59,7 @@ class LocalForeignKeyField(Field):
 
     def __init__(self, source: str,
                  model_class: str | FlaskPumpWoodBaseModel,
-                 serializer: str,
+                 serializer: str | object,
                  display_field: str = None,
                  complementary_source: Dict[str, str] = None,
                  fields: List[str] = None, **kwargs):
@@ -47,7 +71,7 @@ class LocalForeignKeyField(Field):
             model_class (str | FlaskPumpWoodBaseModel):
                 Local model class from which information will be retrieved,
                 it is possible to use string to avoid circular imports.
-            serializer (str | FlaskPumpWoodBaseModel):
+            serializer (str | PumpWoodSerializer):
                 Serializer that will be used serialize objects, it is possible
                 to use a string to avoid circular imports.
             display_field  (str):
@@ -72,18 +96,23 @@ class LocalForeignKeyField(Field):
         # Validations
         if not isinstance(source, (str)):
             msg = (
-                "{name} source argument must be a string or")\
-                    .format(name=self.__name__)
+                "Serializer for {name} source argument must be a string")\
+                .format(name=self.__name__)
             raise exceptions.PumpWoodOtherException(message=msg)
-        if not isinstance(model_class, (str, FlaskPumpWoodBaseModel)):
-            msg = (
-                "{name} source argument must be a string or "
-                "FlaskPumpWoodBaseModel").format(name=self.__name__)
-            raise exceptions.PumpWoodOtherException(message=msg)
+
+        if not isinstance(model_class, str):
+            sqlalchemy_type = _get_sqlalchemy_type(obj=model_class)
+            if sqlalchemy_type != "class":
+                msg = (
+                    "Serializer for {name} model_class argument must be a "
+                    "string or FlaskPumpWoodBaseModel.").format(
+                        name=model_class)
+                raise exceptions.PumpWoodOtherException(message=msg)
+
         if not isinstance(complementary_source, (dict)):
             msg = (
-                "{name} complementary_source argument must be a dictonary "
-                "or None").format(name=self.__name__)
+                "Serializer for {name} complementary_source argument must "
+                "be a dictonary or None").format(name=model_class)
             raise exceptions.PumpWoodOtherException(message=msg)
 
         # Set model_class and serializer as None at the object creation to
@@ -352,11 +381,16 @@ class LocalRelatedField(Field):
                 "{name} source argument must be a string or")\
                     .format(name=self.__name__)
             raise exceptions.PumpWoodOtherException(message=msg)
-        if not isinstance(model_class, (str, FlaskPumpWoodBaseModel)):
-            msg = (
-                "{name} source argument must be a string or "
-                "FlaskPumpWoodBaseModel").format(name=self.__name__)
-            raise exceptions.PumpWoodOtherException(message=msg)
+
+        if not isinstance(model_class, str):
+            sqlalchemy_type = _get_sqlalchemy_type(obj=model_class)
+            if sqlalchemy_type != "class":
+                msg = (
+                    "Serializer for {name} model_class argument must be a "
+                    "string or FlaskPumpWoodBaseModel.").format(
+                        name=model_class)
+                raise exceptions.PumpWoodOtherException(message=msg)
+
         if not isinstance(complementary_foreign_key, (dict)):
             msg = (
                 "{name} complementary_source argument must be a dictonary "
