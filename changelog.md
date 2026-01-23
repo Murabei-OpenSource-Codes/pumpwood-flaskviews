@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.62] - 2026-01-22
+### Added
+- No adds.
+
+### Fix
+- No fix.
+
+### Changed
+- Adjust base query to read the skip arg from attributes.
+
 
 ## [1.3.61] - 2026-01-08
 ### Added
@@ -15,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - No change.
+
 
 ## [1.3.59] - 2026-01-08
 ### Added
