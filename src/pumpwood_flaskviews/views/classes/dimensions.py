@@ -18,33 +18,35 @@ class PumpWoodDimensionsFlaskView(PumpWoodFlaskView):
 
     def dispatch_request(self, end_point, first_arg=None, second_arg=None):
         """dispatch_request for view, add pivot end point."""
-        ###########################
-        # Load payload from request
-        data = None
-        if request.method.lower() in ('post', 'put'):
-            if request.mimetype == 'application/json':
-                data = request.get_json()
-            else:
-                data = request.form.to_dict()
-                for k in data.keys():
-                    data[k] = json.loads(data[k])
+        # Check if it is possible to treat request using simple,
+        # if not check for dimension end-point, if not than raise not found
+        # error
+        try:
+            return super().dispatch_request(end_point, first_arg, second_arg)
+        except exceptions.PumpWoodException as e:
+            # Load payload from request
+            if request.method.lower() in ('post', 'put'):
+                if request.mimetype == 'application/json':
+                    data = request.get_json()
+                else:
+                    data = request.form.to_dict()
+                    for k in data.keys():
+                        data[k] = json.loads(data[k])
 
-        if (end_point == 'list-dimensions' and
-                request.method.lower() == 'post'):
-            endpoint_dict = data or {}
-            return jsonify(self.list_dimensions(**endpoint_dict))
+            if (end_point == 'list-dimensions' and
+                    request.method.lower() == 'post'):
+                endpoint_dict = data or {}
+                return jsonify(self.list_dimensions(**endpoint_dict))
 
-        if (end_point == 'list-dimension-values' and
-                request.method.lower() == 'post'):
-            endpoint_dict = data or {}
-            if "key" not in endpoint_dict.keys():
-                raise exceptions.PumpWoodException(
-                    "Dimention key must be passed as post payload "
-                    "{key: [value]}")
-            return jsonify(self.list_dimension_values(**endpoint_dict))
-
-        return super(PumpWoodDimensionsFlaskView, self).dispatch_request(
-            end_point, first_arg, second_arg)
+            if (end_point == 'list-dimension-values' and
+                    request.method.lower() == 'post'):
+                endpoint_dict = data or {}
+                if "key" not in endpoint_dict.keys():
+                    raise exceptions.PumpWoodException(
+                        "Dimention key must be passed as post payload "
+                        "{key: [value]}")
+                return jsonify(self.list_dimension_values(**endpoint_dict))
+            raise e
 
     def list_dimensions(self, filter_dict: dict = {},
                         exclude_dict: dict = {}) -> list:
