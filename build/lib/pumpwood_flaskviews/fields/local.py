@@ -56,6 +56,9 @@ class LocalForeignKeyField(Field):
     # Disable check if attribute exists on object, Micro service related are
     # not values on object
     _CHECK_ATTRIBUTE = False
+    _PUMPWOOD_FK = True
+    """Set _PUMPWOOD_FK=True, this will be used by serializer to get if this
+       field is a 'Foreign Key'."""
 
     def __init__(self, source: str,
                  model_class: str | FlaskPumpWoodBaseModel,
@@ -317,6 +320,9 @@ class LocalRelatedField(Field):
     """
 
     _CHECK_ATTRIBUTE = False
+    _PUMPWOOD_RELATED = True
+    """Set _PUMPWOOD_FK=True, this will be used by serializer to get if this
+       field is a 'Related Field'."""
 
     def __init__(self,
                  model_class: str | FlaskPumpWoodBaseModel,

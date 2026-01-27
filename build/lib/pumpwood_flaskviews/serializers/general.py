@@ -162,8 +162,7 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
         """
         return_dict = {}
         for field_name, field in self._declared_fields.items():
-            is_micro_fk = isinstance(field, (
-                MicroserviceForeignKeyField, LocalForeignKeyField))
+            is_micro_fk = getattr(field, '_PUMPWOOD_FK', False)
             if is_micro_fk:
                 return_dict[field.source] = field.to_dict()
         return return_dict
@@ -183,8 +182,7 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
         """
         return_dict = {}
         for field_name, field in self._declared_fields.items():
-            is_micro_rel = isinstance(field, (
-                MicroserviceRelatedField, LocalRelatedField))
+            is_micro_rel = getattr(field, '_PUMPWOOD_RELATED', False)
             if is_micro_rel:
                 return_dict[field_name] = field.to_dict()
         return return_dict
