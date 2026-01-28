@@ -142,8 +142,7 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
     @classmethod
     def default_query_get(cls, pk: str | int,
                           base_query: Query = None,
-                          raise_error: bool = True,
-                          use_cache: bool = False) -> object:
+                          raise_error: bool = True) -> object:
         """Get model_class object using pumpwood pk.
 
         Pumpwood pk may be integers and base64 strings coding a dictionary
