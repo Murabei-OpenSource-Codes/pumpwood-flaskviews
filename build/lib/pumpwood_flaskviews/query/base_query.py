@@ -1,6 +1,6 @@
 """Module to filter row permission."""
-import abc
 import json
+from abc import ABC, abstractmethod
 from sqlalchemy import or_
 from flask import request
 from flask_sqlalchemy.query import Query
@@ -11,8 +11,14 @@ from pumpwood_communication.exceptions import (
     PumpWoodOtherException, PumpWoodQueryException)
 
 
-class BaseQueryABC(abc.ABC):
+class BaseQueryABC(ABC):
     """Abstract base class for base query class."""
+
+    @property
+    @abstractmethod
+    def skip_arg(self):
+        """Define the name of the argument to allow skiping filter."""
+        pass
 
     def add_filter(self, model: DeclarativeBase, query: Query = None,
                    filter_dict: None | dict = None, exclude_dict: dict = None,
@@ -93,21 +99,19 @@ class BaseQueryABC(abc.ABC):
             base_filter_skip = []
         return self.validate_skip_arg(base_filter_skip=base_filter_skip)
 
-    def check_for_skip_arg(self, skip_arg: str = None) -> bool:
+    def check_for_skip_arg(self) -> bool:
         """Check if skip arg is preesent on request URL.
 
         It will also look for 'ALL', it is expected that 'ALL' skip arg will
         skip all filter for different base query.
 
-        Args:
-            skip_arg (str):
-                Skip argument that will be checked if present on
-                base_filter_skip URL parameter.
+        If will try to fetch `skip_arg` from class definition.
 
         Returns:
             Return True if skip_arg if present on URL parameter or if
             'ALL' is present.
         """
+        skip_arg = getattr(self, 'skip_arg', None)
         if skip_arg is None:
             return False
         else:
@@ -120,6 +124,9 @@ class BaseQueryABC(abc.ABC):
 
 class BaseQueryNoFilter(BaseQueryABC):
     """Dummy base query that will not change the behavior."""
+
+    skip_arg = None
+    """There is nothing to skip here."""
 
     def add_filter(self, model: DeclarativeBase, query: Query = None,
                    **kwards) -> Query:
@@ -145,6 +152,9 @@ class BaseQueryNoFilter(BaseQueryABC):
 
 class BaseQueryRowPermission(BaseQueryABC):
     """Class to query builder."""
+
+    skip_arg = "BaseQueryRowPermission"
+    """There is nothing to skip here."""
 
     def __init__(self, row_permission_col: str):
         """Intanciate an object to perform row_permission filter.
@@ -185,8 +195,7 @@ class BaseQueryRowPermission(BaseQueryABC):
         if query is None:
             query = model.query
 
-        is_skip = self.check_for_skip_arg(
-            skip_arg='BaseQueryRowPermission')
+        is_skip = self.check_for_skip_arg()
         user_info = AuthFactory.retrieve_authenticated_user()
         if is_skip and user_info['is_superuser']:
             return query
@@ -205,6 +214,9 @@ class BaseQueryRowPermission(BaseQueryABC):
 
 class BaseQueryOwner(BaseQueryABC):
     """Class to query builder."""
+
+    skip_arg = "BaseQueryOwner"
+    """Set the name of the skip argument."""
 
     def __init__(self, owner_col: str):
         """Intanciate an object to perform owner filter.
@@ -249,7 +261,7 @@ class BaseQueryOwner(BaseQueryABC):
             query = model.query
 
         user_info = AuthFactory.retrieve_authenticated_user()
-        is_skip = self.check_for_skip_arg(skip_arg='BaseQueryOwner')
+        is_skip = self.check_for_skip_arg()
         if is_skip and user_info['is_superuser']:
             return query
 
@@ -262,6 +274,9 @@ class BaseQueryOwner(BaseQueryABC):
 
 class BaseFilterDeleted(BaseQueryABC):
     """Class to base filter for deleted objects."""
+
+    skip_arg = "BaseFilterDeleted"
+    """Set the name of the skip argument."""
 
     def __init__(self, deleted_col: str):
         """Intanciate an object to perform deleted filter.
@@ -306,7 +321,7 @@ class BaseFilterDeleted(BaseQueryABC):
             query = model.query
 
         user_info = AuthFactory.retrieve_authenticated_user()
-        is_skip = self.check_for_skip_arg(skip_arg='BaseFilterDeleted')
+        is_skip = self.check_for_skip_arg()
         if is_skip and user_info['is_superuser']:
             return query
 

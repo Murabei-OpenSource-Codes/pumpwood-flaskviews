@@ -227,8 +227,6 @@ class PumpWoodFlaskView(View):
         Return:
             Returns a SQLAlchemy object with corresponding primary key.
         """
-        print("pumpwood_pk_get:", pk)
-
         # Use base query to filter object acording to user's permission
         tmp_base_query = cls.model_class.base_query\
             .add_filter(model=cls.model_class)
@@ -319,8 +317,10 @@ class PumpWoodFlaskView(View):
 
     def dispatch_request(self, end_point, first_arg=None, second_arg=None):
         """Dispatch request acordint o end_point, first_arg and second_arg."""
-        # Force model to be init and avoid 'DeclarativeAttributeIntercept'
+        # Ping the database and rollback session if necessary
+        self.get_session()
 
+        # Force model to be init and avoid 'DeclarativeAttributeIntercept'
         AuthFactory.check_authorization(
             request_method=request.method.lower(),
             path=request.path, end_point=end_point,
@@ -594,7 +594,6 @@ class PumpWoodFlaskView(View):
         filter_dict = {} if filter_dict is None else filter_dict
         exclude_dict = {} if exclude_dict is None else exclude_dict
         order_by = [] if order_by is None else order_by
-        self.get_session()
 
         list_paginate_limit = limit or self.list_paginate_limit
         query_result = self.model_class.default_query_list(
@@ -639,8 +638,6 @@ class PumpWoodFlaskView(View):
             Return a list of serialized objects using self.serializer and
             filtered by args without pagination all values.
         """
-        self.get_session()
-
         # Set list and dicts in the fuction to no bug with pointers
         filter_dict = {} if filter_dict is None else filter_dict
         exclude_dict = {} if exclude_dict is None else exclude_dict
@@ -679,8 +676,6 @@ class PumpWoodFlaskView(View):
         Return:
             A dictionary with the serialized values of the object.
         """
-        self.get_session()
-
         model_object = self.model_class.default_query_get(pk=pk)
         retrieve_serializer = self.serializer(
             many=False, fields=fields, default_fields=default_fields,
@@ -1250,8 +1245,6 @@ class PumpWoodFlaskView(View):
 
     def execute_action(self, action_name, pk=None, parameters={}):
         """Execute action over object or class using parameters."""
-        self.get_session()
-
         actions = self.get_actions()
         rest_action_names = list(actions.keys())
 
@@ -1299,10 +1292,7 @@ class PumpWoodFlaskView(View):
             # Create a serializer to serialize the object to return the value
             # at the action call
             temp_serializer = self.serializer(many=False, default_fields=True)
-            print("temp_serializer:", temp_serializer)
-
             object_dict = temp_serializer.dump(model_object)
-            print("object_dict:", object_dict)
 
         loaded_parameters = load_action_parameters(action_fun, parameters)
         result = action_fun(**loaded_parameters)

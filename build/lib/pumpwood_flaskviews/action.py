@@ -4,7 +4,7 @@ import textwrap
 import pandas as pd
 import typing
 from datetime import date, datetime
-from typing import Callable, cast
+from typing import Callable, cast, get_origin, get_args
 from pumpwood_communication.exceptions import PumpWoodActionArgsException
 
 
@@ -15,60 +15,68 @@ class Action:
         """."""
         def extract_param_type(param) -> None:
             """Extract paramter type."""
-            resp = {"many": False}
-            if param.annotation == inspect.Parameter.empty:
+            annotation = param.annotation
+            if annotation == inspect.Parameter.empty:
+                resp = {"many": False}
                 if param.default == inspect.Parameter.empty:
                     resp["type"] = "Any"
                 else:
                     resp["type"] = type(param.default).__name__
-            elif isinstance(param.annotation, str):
-                resp["type"] = param.annotation
-            elif isinstance(param.annotation, type):
-                resp["type"] = param.annotation.__name__
-            elif typing.get_origin(param.annotation) == typing.Literal:
+                return resp
+
+            resp = {"many": False}
+            if isinstance(annotation, str):
+                resp["type"] = annotation
+
+            elif isinstance(annotation, type):
+                resp["type"] = annotation.__name__
+
+            elif typing.get_origin(annotation) is typing.Literal:
                 resp["type"] = "options"
-                typing_args = typing.get_args(param.annotation)
+                typing_args = typing.get_args(annotation)
                 resp["in"] = [
                     {"value": x, "description": x}
                     for x in typing_args]
-            elif isinstance(typing.get_origin(param.annotation), list):
+
+            elif typing.get_origin(annotation) is list:
                 resp["many"] = True
-                list_args = typing.get_args(param.annotation)
+                list_args = typing.get_args(annotation)
                 if len(list_args) == 0:
                     resp["type"] = "Any"
                 else:
-                    resp["type"] = list_args[0].__name__
+                    list_typing = list_args[0]
+                    if list_typing is None:
+                        resp["type"] = "Any"
+                    else:
+                        resp["type"] = list_typing.__name__
             else:
-                resp["type"] = str(param.annotation).replace(
-                    'typing.', '')
+                resp["type"] = str(annotation).replace('typing.', '')
             return resp
 
         def extract_return_type(return_annotation):
             """Extract result type."""
-            resp = {"many": False}
             if return_annotation == inspect.Parameter.empty:
+                return {
+                    "many": False,
+                    "type": "Any"}
+
+            resp = {"many": False}
+            annotation_origin = typing.get_origin(return_annotation)
+            if annotation_origin is list:
+                resp = {"many": True}
+                annotation_args = typing.get_args(return_annotation)
+                if len(annotation_args) != 1:
+                    msg = "List typing must be associated with one type only"
+                    raise NotImplementedError(msg)
+                annotation_origin = annotation_args[0]
+
+            # Get name of the typing
+            if annotation_origin is None:
                 resp["type"] = "Any"
-            elif isinstance((return_annotation), str):
-                resp["type"] = return_annotation
-            elif isinstance(return_annotation, type):
-                resp["type"] = return_annotation.__name__
-            elif (typing.get_origin(return_annotation) == typing.Literal):
-                resp["type"] = "options"
-                typing_args = typing.get_args(return_annotation)
-                resp["in"] = [
-                    {"value": x, "description": x}
-                    for x in typing_args]
-            elif isinstance(typing.get_origin(return_annotation), list):
-                resp["many"] = True
-                list_args = typing.get_args(return_annotation)
-                if len(list_args) == 0:
-                    resp["type"] = "Any"
-                else:
-                    resp["type"] = list_args[0].__name__
+                return resp
             else:
-                resp["type"] = str(return_annotation).replace(
-                    'typing.', '')
-            return resp
+                resp["type"] = annotation_origin.__name__
+                return resp
 
         # Getting function parameters hint
         signature = inspect.signature(func)
