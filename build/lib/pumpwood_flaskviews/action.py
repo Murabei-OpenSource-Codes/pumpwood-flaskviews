@@ -35,7 +35,10 @@ class Action:
                 resp["type"] = "options"
                 typing_args = typing.get_args(annotation)
                 resp["in"] = [
-                    {"value": x, "description": x}
+                    {
+                        "value": x,
+                        "description": "*empty*" if x is None else x
+                    }
                     for x in typing_args]
 
             elif typing.get_origin(annotation) is list:
