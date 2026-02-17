@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.67] - 2026-02-02
+### Added
+- No adds.
+
+### Fix
+- No fix.
+
+### Changed
+- Set description of action options parameter to `*empty*` is value is None.
+
+## [1.3.66] - 2026-02-02
+### Added
+- Add function `user_has_row_permission` at authorization factory to check
+  if user has access to a row permission.
+
+### Fix
+- No fix.
+
+### Changed
+- No changes.
+
+
+## [1.3.63] - 2026-01-22
+### Added
+- No adds.
+
+### Fix
+- Fixed typing when using list at typing of parameters and returns.
+
+### Changed
+- No changes.
+
+
 ## [1.3.62] - 2026-01-22
 ### Added
 - No adds.

@@ -6,6 +6,8 @@ from marshmallow.fields import Field
 from pumpwood_communication import exceptions
 from pumpwood_communication.serializers import CompositePkBase64Converter
 from pumpwood_communication.microservices import PumpWoodMicroService
+from pumpwood_communication.type import (
+    ForeignKeyColumnExtraInfo, RelatedColumnExtraInfo)
 from pumpwood_flaskviews.auth import AuthFactory
 from pumpwood_flaskviews.config import (
     SERIALIZER_FK_CACHE_TIMEOUT)
@@ -220,10 +222,11 @@ class MicroserviceForeignKeyField(Field):
     def to_dict(self):
         """Return a dict with values to be used on options end-point."""
         source_keys = self.get_source_pk_fields()
-        return {
-            'model_class': self.model_class, 'many': False,
-            'display_field': self.display_field,
-            'object_field': self.name, 'source_keys': source_keys}
+        fk_type_obj = ForeignKeyColumnExtraInfo(
+            model_class=self.model_class, many=False,
+            display_field=self.display_field, object_field=self.name,
+            source_keys=source_keys)
+        return fk_type_obj
 
 
 class MicroserviceRelatedField(Field):
@@ -451,10 +454,8 @@ class MicroserviceRelatedField(Field):
 
     def to_dict(self):
         """Return a dict with values to be used on options end-point."""
-        return {
-            'model_class': self.model_class, 'many': True,
-            'pk_field': self.pk_field,
-            'foreign_key': self.foreign_key,
-            'complementary_foreign_key': self.complementary_foreign_key,
-            'order_by': self.order_by,
-            'fields': self.fields}
+        return RelatedColumnExtraInfo(
+            model_class=self.model_class, many=True, pk_field=self.pk_field,
+            foreign_key=self.foreign_key,
+            complementary_foreign_key=self.complementary_foreign_key,
+            fields=self.fields)

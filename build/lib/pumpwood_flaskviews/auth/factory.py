@@ -268,3 +268,33 @@ class AuthFactory:
         """Return auth header to use on microservice."""
         token = flask_request.headers.get('Authorization', None)
         return copy.deepcopy({'Authorization': token})
+
+    @classmethod
+    def user_has_row_permission(cls, row_permission_id: int,
+                                raise_error: bool = True) -> bool:
+        """Retrieve user data using Auth API.
+
+        Args:
+            row_permission_id (str):
+                Check if user has row permission.
+            raise_error (bool):
+                Raise PumpWoodUnauthorized error if user does not have
+                access to row_permission_id.
+
+        Return:
+            Returns True is user has access.
+        """
+        authenticated_user = cls.retrieve_authenticated_user()
+        all_row_permisson_set = authenticated_user['all_row_permisson_set']
+
+        all_row_permisson_ids = [
+            permission['pk'] for permission in all_row_permisson_set]
+        does_user_has_permission = row_permission_id in all_row_permisson_ids
+
+        if raise_error and not does_user_has_permission:
+            msg = (
+                "User does not have access to this row permission "
+                "[{row_permission_id}]")
+            raise exceptions.PumpWoodUnauthorized(
+                message=msg,
+                payload={"row_permission_id": row_permission_id})

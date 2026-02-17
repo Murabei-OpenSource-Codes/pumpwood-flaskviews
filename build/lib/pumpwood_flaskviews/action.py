@@ -4,7 +4,7 @@ import textwrap
 import pandas as pd
 import typing
 from datetime import date, datetime
-from typing import Callable, cast, get_origin, get_args
+from typing import Callable, cast
 from pumpwood_communication.exceptions import PumpWoodActionArgsException
 
 
@@ -35,7 +35,10 @@ class Action:
                 resp["type"] = "options"
                 typing_args = typing.get_args(annotation)
                 resp["in"] = [
-                    {"value": x, "description": x}
+                    {
+                        "value": x,
+                        "description": "*empty*" if x is None else x
+                    }
                     for x in typing_args]
 
             elif typing.get_origin(annotation) is list:

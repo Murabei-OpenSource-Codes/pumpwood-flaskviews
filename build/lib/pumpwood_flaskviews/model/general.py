@@ -1,11 +1,16 @@
 """Functions and classes for flask/SQLAlchemy models."""
+from loguru import logger
+from flask import g
+from typing import Literal
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import Column, BigInteger
 from flask_sqlalchemy.query import Query
-from pumpwood_flaskviews.query import BaseQueryABC, BaseQueryNoFilter
-from pumpwood_flaskviews.query import SqlalchemyQueryMisc
+from pumpwood_flaskviews.query import (
+    BaseQueryABC, BaseQueryNoFilter, SqlalchemyQueryMisc)
+from pumpwood_flaskviews.auth import AuthFactory
 from pumpwood_communication.serializers import CompositePkBase64Converter
 from pumpwood_communication.exceptions import PumpWoodObjectDoesNotExist
+from pumpwood_communication.cache import default_cache
 # from pumpwood_flaskviews.sqlalchemy import get_session
 
 
@@ -35,6 +40,34 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
     will be applied to all end-points (retrieve, list, delete, action, ...).
     It can be used to retrict access to data according to user row_permission
     or object ownership."""
+
+    table_partition: list[str] = []
+    """Specify table particions that are applied the database. It is expected
+       that tables with more the one partition at least the first one must
+       be specified on the queries."""
+
+    @classmethod
+    def build_get_cache_hash(cls, pk: str | int,
+                             get_type: Literal['default', 'query']
+                             ) -> str:
+        """Build get hash dict.
+
+        Args:
+             pk (str | int):
+                Primary to fetch the data.
+             get_type (Literal('default', 'query')):
+                Type of the request that is been made.
+
+        Returns:
+            Return a dictionary with hash dict to cache get.
+        """
+        hash_dict = AuthFactory.get_auth_header()
+        hash_dict = {
+            'context': 'flaskviews--model-query-retrieve',
+            'model_class': cls.__name__,
+            'pk': pk,
+            'get-type': get_type}
+        return default_cache._generate_hash(hash_dict)
 
     @classmethod
     def default_filter_query(cls, query: Query = None,
@@ -128,10 +161,20 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
                 A base query to be used as initial filter.
             raise_error (bool):
                 Raise error if object was not found.
+            use_cache (bool):
+                If local cache may be used to retrieve data. Is base query
+                if not None, cache can not be used.
 
         Return:
             Returns a SQLAlchemy object with corresponding primary key.
         """
+        hash_str = cls.build_get_cache_hash(
+            pk=pk, get_type='default')
+        cache_data = getattr(g, hash_str, None)
+        if cache_data is not None:
+            logger.info("default_query_get data retrieved from g object")
+            return cache_data
+
         converted_pk = CompositePkBase64Converter.load(pk)
         if isinstance(converted_pk, (int, float)):
             # If a numeric data is passed as pk it is associated with
@@ -154,6 +197,9 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
                 message=message, payload={
                     "model_class": cls.__name__,
                     "pk": _try_convert_int(pk)})
+
+        # Set a local cache for object using g object
+        setattr(g, hash_str, model_object)
         return model_object
 
     @classmethod
@@ -219,6 +265,13 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
         Return:
             Returns a SQLAlchemy object with corresponding primary key.
         """
+        hash_str = cls.build_get_cache_hash(
+            pk=pk, get_type='query')
+        cache_data = getattr(g, hash_str, None)
+        if cache_data is not None:
+            logger.info("default_query_get data retrieved from g object")
+            return cache_data
+
         converted_pk = CompositePkBase64Converter.load(pk)
         if isinstance(converted_pk, (int, float)):
             # If a numeric data is passed as pk it is associated with
@@ -240,4 +293,7 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
                 message=message, payload={
                     "model_class": cls.__name__,
                     "pk": _try_convert_int(pk)})
+
+        # Set a local cache for object using g object
+        setattr(g, hash_str, model_object)
         return model_object

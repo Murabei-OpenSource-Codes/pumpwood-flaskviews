@@ -10,6 +10,8 @@ from sqlalchemy.exc import NoInspectionAvailable
 from pumpwood_communication import exceptions
 from pumpwood_communication.cache import default_cache
 from pumpwood_communication.serializers import CompositePkBase64Converter
+from pumpwood_communication.type import (
+    ForeignKeyColumnExtraInfo, RelatedColumnExtraInfo)
 from pumpwood_flaskviews.auth import AuthFactory
 from pumpwood_flaskviews.model import FlaskPumpWoodBaseModel
 
@@ -304,13 +306,10 @@ class LocalForeignKeyField(Field):
     def to_dict(self):
         """Return a dict with values to be used on options end-point."""
         source_keys = self._get_source_pk_fields()
-        return {
-            'model_class': self.model_class.__class__.__name__,
-            'many': False,
-            'display_field': self.display_field,
-            'object_field': self.name,
-            'source_keys': source_keys
-        }
+        return ForeignKeyColumnExtraInfo(
+            model_class=self.model_class.__class__.__name__, many=False,
+            display_field=self.display_field, object_field=self.name,
+            source_keys=source_keys)
 
 
 class LocalRelatedField(Field):
@@ -552,10 +551,10 @@ class LocalRelatedField(Field):
 
     def to_dict(self):
         """Return a dict with values to be used on options end-point."""
-        return {
-            'model_class': self.model_class, 'many': True,
-            'pk_field': self.pk_field,
-            'foreign_key': self.foreign_key,
-            'complementary_foreign_key': self.complementary_foreign_key,
-            'order_by': self.order_by,
-            'fields': self.fields}
+        return RelatedColumnExtraInfo(
+            model_class=self.model_class.__class__.__name__,
+            many=True,
+            pk_field=self.pk_field,
+            foreign_key=self.foreign_key,
+            complementary_foreign_key=self.complementary_foreign_key,
+            fields=self.fields)

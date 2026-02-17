@@ -6,26 +6,20 @@ import textwrap
 import inspect
 import datetime
 import simplejson as json
-from typing import Any, Union, List
+from typing import Any, Union, List, Literal
 from flask.views import View
 from flask import request, Response
 from flask import jsonify, send_file
 from werkzeug.utils import secure_filename
 from flask_sqlalchemy.query import Query
-from sqlalchemy import inspect as alchemy_inspect
-from sqlalchemy.sql.functions import GenericFunction
-from sqlalchemy.sql.schema import Sequence, UniqueConstraint
-from sqlalchemy.sql.expression import False_ as sql_false
-from sqlalchemy.sql.expression import True_ as sql_true
-from sqlalchemy_utils.types.choice import ChoiceType
-from geoalchemy2.types import Geometry
-from marshmallow import missing
+from sqlalchemy.sql.schema import UniqueConstraint
 from pumpwood_communication import exceptions
 from pumpwood_communication.microservices import PumpWoodMicroService
 from pumpwood_communication.cache import default_cache
 from pumpwood_flaskviews.sqlalchemy import get_session
 
 # Flask view
+from pumpwood_flaskviews.views.classes.aux import AuxFillOptions
 from pumpwood_flaskviews.inspection import model_has_column
 from pumpwood_flaskviews.query import SqlalchemyQueryMisc
 from pumpwood_flaskviews.auth import AuthFactory
@@ -1370,223 +1364,16 @@ class PumpWoodFlaskView(View):
         return pd_results.to_dict(format)
 
     @classmethod
-    def cls_fields_options(cls):
+    def cls_fields_options(cls,
+                           user_type: Literal['api', 'gui'] = 'api') -> dict:
         """Return description of the model fields."""
         # Get information from cache if avaiable
-        hash_dict = {
-            "context": "pumpwood_flaskviews",
-            "end-point": "cls_fields_options",
-            "model_class": cls.model_class.__name__}
-        cache_data = default_cache.get(hash_dict=hash_dict)
-        if cache_data is not None:
-            return cache_data
-
-        mapper = alchemy_inspect(cls.model_class)
-        serializer_obj = cls.serializer()
-        serializer_fields = serializer_obj.fields
-
-        # Getting table/class map
-        table_class_map = {}
-        for mapper_temp in cls.db.Model.registry.mappers:
-            model_name = mapper_temp.class_.__name__
-            table_name = mapper_temp.persist_selectable.name
-            table_class_map[table_name] = model_name
-
-        dict_columns = {}
-        model_class = cls.model_class.__name__
-        translation_tag_template = "{model_class}__fields__{field}"
-        for x in mapper.columns:
-            column = x.name
-            type_str = None
-            if isinstance(x.type, Geometry):
-                type_str = "geometry"
-            else:
-                type_str = x.type.python_type.__name__
-
-            # If serializer is set, use serializer information. It will
-            # overide database behavior (serializer's validation and defult
-            # are set before database)
-            temp_field = serializer_fields.get(column)
-            read_only = False
-            nullable = False
-            default = None
-            ser_field_default = None
-            if temp_field is not None:
-                dump_only = getattr(
-                    temp_field, 'dump_only', False)
-                # Custom attribute to help with calculated custom fields on
-                # pumpwood
-                pumpwood_read_only = getattr(
-                    temp_field, 'pumpwood_read_only', False)
-                read_only = dump_only or pumpwood_read_only
-
-                nullable = getattr(temp_field, 'allow_none')
-                ser_field_default = getattr(temp_field, 'load_default')
-
-                # If dump default is not vaiable
-                if ser_field_default is missing:
-                    if pumpwood_read_only:
-                        ser_field_default = getattr(
-                            temp_field, 'pumpwood_default', None)
-                    else:
-                        ser_field_default = None
-            else:
-                nullable = x.nullable
-
-            column_default = x.default
-            if ser_field_default is not None:
-                default = ser_field_default
-            elif column_default is not None:
-                arg = getattr(x.default, 'arg', None)
-                if isinstance(arg, GenericFunction):
-                    default = arg.description
-                elif arg is dict:
-                    default = {}
-                elif inspect.isfunction(arg):
-                    default = arg.__name__ + "()"
-                elif isinstance(x.default, Sequence):
-                    default = "#autoincrement#"
-                elif isinstance(arg, sql_false):
-                    default = False
-                elif isinstance(arg, sql_true):
-                    default = True
-                else:
-                    default = arg
-            elif x.server_default is not None:
-                arg = getattr(x.server_default, 'arg', None)
-                if isinstance(arg, GenericFunction):
-                    default = arg.description
-                elif arg is dict:
-                    default = {}
-                elif inspect.isfunction(arg):
-                    default = arg.__name__ + "()"
-                elif isinstance(x.server_default, Sequence):
-                    default = "#autoincrement#"
-                elif isinstance(arg, sql_false):
-                    default = False
-                elif isinstance(arg, sql_true):
-                    default = True
-                else:
-                    default = arg
-
-            help_text = x.doc
-            tag = translation_tag_template.format(
-                model_class=model_class, field=column)
-            column__verbose = _.t(
-                sentence=column, tag=tag + "__column")
-            help_text__verbose = _.t(
-                sentence=help_text, tag=tag + "__help_text")
-            column_info = {
-                "primary_key": x.primary_key,
-                "column": column,
-                "column__verbose": column__verbose,
-                "help_text": help_text,
-                "help_text__verbose": help_text__verbose,
-                "type": type_str,
-                "nullable": nullable,
-                "read_only": read_only,
-                "default": default,
-                "unique": x.unique,
-                "extra_info": {}
-            }
-
-            if isinstance(x.type, ChoiceType):
-                column_info["type"] = "options"
-                in_dict = {}
-                for choice in x.type.choices:
-                    in_dict[choice[0]] = {
-                        "description__verbose": _.t(
-                            sentence=choice[1],
-                            tag=tag + "__choice__" + choice[0]),
-                        "description": choice[1]}
-                column_info["in"] = in_dict
-
-            if column_info["column"] == "id":
-                column_info["default"] = "#autoincrement#"
-                column_info["doc_string"] = "autoincrement id"
-
-            file_field = cls.file_fields.get(x.name)
-            if file_field is not None:
-                column_info["type"] = "file"
-                column_info["permited_file_types"] = file_field
-            dict_columns[column_info["column"]] = column_info
-
-        #######################################################
-        # Modifying column types associated with foreign keys #
-        # foreign_key dictionary will pass to front-end information to
-        # render.
-        serializer_obj = cls.serializer()
-        foreign_keys = serializer_obj.get_foreign_keys()
-        for field_name, field_extra_info in foreign_keys.items():
-            tag = translation_tag_template.format(
-                model_class=model_class, field=field_name)
-            field_info = dict_columns.get(field_name)
-            if field_info is None:
-                msg = (
-                    "foreign_key[{field}] not correctly configured for "
-                    "model_class[{model_class}].")
-                raise exceptions.PumpWoodOtherException(
-                    msg, payload={
-                        "field": field_name, "model_class": model_class})
-            field_info["type"] = "foreign_key"
-            field_info['extra_info'] = field_extra_info
-            dict_columns[field_name] = field_info
-
-        related_fields = serializer_obj.get_related_fields()
-        for field_name, field_extra_info in related_fields.items():
-            tag = translation_tag_template.format(
-                model_class=model_class, field=field_name)
-            column__verbose = _.t(
-                sentence=field_name, tag=tag + "__related_field")
-            field = serializer_obj._declared_fields[field_name]
-            help_text__verbose = _.t(
-                sentence=field.help_text, tag=tag + "__help_text")
-            dict_columns[field_name] = {
-                "primary_key": False,
-                "column": field_name,
-                "column__verbose": column__verbose,
-                "help_text": field.help_text,
-                "help_text__verbose": help_text__verbose,
-                "type": "related_model",
-                "nullable": False,
-                "read_only": field.read_only,
-                "default": None,
-                "unique": False,
-                "extra_info": field_extra_info}
-
-        ############################################################
-        # Stores primary keys as attribute to help other functions #
-        primary_keys = cls._extract_primary_keys(
-            dict_columns=dict_columns)
-        help_text = (
-            "table primary key" if len(primary_keys) == 1
-            else "base64 encoded json dictionary")
-        tag = translation_tag_template.format(
-            model_class=model_class, field='pk')
-        column__verbose = _.t(
-            sentence='pk', tag=tag + "__column")
-        help_text__verbose = _.t(
-            sentence=help_text, tag=tag + "__help_text")
-
-        dict_columns["pk"] = {
-            "primary_key": True,
-            "partition": cls.table_partition,
-            "column": primary_keys,
-            "column__verbose": column__verbose,
-            "help_text": help_text,
-            "help_text__verbose": help_text__verbose,
-            "type": "#autoincrement#",
-            "nullable": True,
-            "read_only": True,
-            "default": "#autoincrement#",
-            "unique": True}
-
-        # Set cache to reduce response time
-        default_cache.set(
-            hash_dict=hash_dict,
-            value=dict_columns,
-            expire=INFO_CACHE_TIMEOUT)
-        return dict_columns
+        return_data = AuxFillOptions.run(
+            model_class=cls.model_class,
+            serializer=cls.serializer,
+            view_file_fields=cls.file_fields,
+            user_type=user_type)
+        return return_data
 
     def search_options(self):
         """# DEPRECTED # Return search options for list pages."""
@@ -1684,16 +1471,9 @@ class PumpWoodFlaskView(View):
         Returns:
             Return a dictionary.
         """
-        gui_readonly = self.get_gui_readonly()
-        fill_options = self.cls_fields_options()
-
-        # If it is gui interface then set gui_readonly as read-only
-        # this will limit fields that are not read-only but should not
-        # be edited be the user
-        if user_type == 'gui':
-            for key, item in fill_options.items():
-                if key in gui_readonly:
-                    item["read_only"] = True
+        fill_options = self.cls_fields_options(user_type=user_type)
+        serializer_obj = self.serializer()
+        gui_readonly = serializer_obj.get_gui_readonly()
         return {
             "field_descriptions": fill_options,
             "gui_readonly": gui_readonly
