@@ -5,6 +5,61 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.62] - 2026-01-22
+### Added
+- No adds.
+
+### Fix
+- No fix.
+
+### Changed
+- Adjust base query to read the skip arg from attributes.
+
+
+## [1.3.61] - 2026-01-08
+### Added
+- No adds.
+
+### Fix
+- Fix when passing serializer and model_class as python class to field.
+
+### Changed
+- No change.
+
+
+## [1.3.59] - 2026-01-08
+### Added
+- Adjust order by to allow using operations such as insensitive to order by
+  with case insensitive..
+
+### Fix
+- No fix.
+
+### Changed
+- No change.
+
+## [1.3.56] - 2026-01-08
+### Added
+- Make list_fields optional, if not set fields will be used.
+
+### Fix
+- No fix.
+
+### Changed
+- No change.
+
+## [1.3.55] - 2026-01-04
+### Added
+- `PumpwoodDBGuard` it will add pre and post requests hooks to check if
+  database is avaiable and regen connection if 5 retries. Will also roolback
+  pending session transation and remove session at the end of request.
+
+### Fix
+- No fix.
+
+### Changed
+- No change.
+
 ## [1.3.50] - 2026-01-02
 ### Added
 - Adjust base filter to allow skip using URL parameter skip_base_query

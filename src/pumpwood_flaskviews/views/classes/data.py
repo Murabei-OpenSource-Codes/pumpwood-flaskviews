@@ -22,25 +22,31 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
 
     def dispatch_request(self, end_point, first_arg=None, second_arg=None):
         """dispatch_request for view, add pivot end point."""
-        data = None
-        if request.method.lower() in ('post', 'put'):
-            if request.mimetype == 'application/json':
-                data = request.get_json()
-            else:
-                data = request.form.to_dict()
-                for k in data.keys():
-                    data[k] = json.loads(data[k])
+        # Check if it is possible to treat request using simple,
+        # if not check for dimension end-point, if not than raise not found
+        # error
+        try:
+            return super().dispatch_request(end_point, first_arg, second_arg)
+        except exceptions.PumpWoodException as e:
+            # Treat request payload
+            data = None
+            if request.method.lower() in ('post', 'put'):
+                if request.mimetype == 'application/json':
+                    data = request.get_json()
+                else:
+                    data = request.form.to_dict()
+                    for k in data.keys():
+                        data[k] = json.loads(data[k])
 
-        if end_point == 'pivot' and request.method.lower() == 'post':
-            endpoint_dict = data or {}
-            return jsonify(self.pivot(**endpoint_dict))
+            if end_point == 'pivot' and request.method.lower() == 'post':
+                endpoint_dict = data or {}
+                return jsonify(self.pivot(**endpoint_dict))
 
-        if end_point == 'bulk-save' and request.method.lower() == 'post':
-            endpoint_dict = data or []
-            return jsonify(self.bulk_save(data_to_save=data))
+            if end_point == 'bulk-save' and request.method.lower() == 'post':
+                endpoint_dict = data or []
+                return jsonify(self.bulk_save(data_to_save=data))
 
-        return super(PumpWoodDataFlaskView, self).dispatch_request(
-            end_point, first_arg, second_arg)
+            raise e
 
     def pivot(self, filter_dict: None | dict = None,
               exclude_dict: None | dict = None, order_by: None | list = None,
@@ -164,8 +170,9 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
         """Bulk save data.
 
         Args:
-            data_to_save(list): List of dictionaries which must have
-                                self.expected_cols_bulk_save.
+            data_to_save(list):
+                List of dictionaries which must have
+                self.expected_cols_bulk_save.
 
         Return:
             Dictionary with ['saved_count'] for total of saved objects.

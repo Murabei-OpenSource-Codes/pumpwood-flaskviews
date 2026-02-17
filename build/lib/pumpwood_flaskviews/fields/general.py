@@ -85,10 +85,17 @@ class ChoiceField(fields.Field):
         return None
 
     def _deserialize(self, value, attr, data):
-        if type(value) is str:
+        if isinstance(value, str):
             return value
         else:
-            return value.code
+            value_type = type(value).__name__
+            msg = (
+                "Value type of `ChoiceField` must be str, it was passed "
+                "`{value_type}`. Value: `{value}`")
+            raise exceptions.PumpWoodObjectSavingException(
+                msg, payload={
+                    'value_type': value_type,
+                    'value': value})
 
 
 class PrimaryKeyField(fields.Function):
