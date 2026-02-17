@@ -41,6 +41,11 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
     It can be used to retrict access to data according to user row_permission
     or object ownership."""
 
+    table_partition: list[str] = []
+    """Specify table particions that are applied the database. It is expected
+       that tables with more the one partition at least the first one must
+       be specified on the queries."""
+
     @classmethod
     def build_get_cache_hash(cls, pk: str | int,
                              get_type: Literal['default', 'query']

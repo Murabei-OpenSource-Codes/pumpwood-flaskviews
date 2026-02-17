@@ -147,6 +147,21 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
             return list(fields.keys())
         return list_fields
 
+    def get_gui_readonly(self) -> list:
+        """Get list fields from serializer.
+
+        Args:
+            No Args.
+
+        Return:
+            Default fields to be used at list and retrive with
+            default_fields=True.
+        """
+        gui_readonly = getattr(self.Meta, 'gui_readonly', None)
+        if gui_readonly is None:
+            gui_readonly = list()
+        return gui_readonly
+
     def get_foreign_keys(self) -> dict:
         """Return a dictonary with all foreign_key fields.
 
