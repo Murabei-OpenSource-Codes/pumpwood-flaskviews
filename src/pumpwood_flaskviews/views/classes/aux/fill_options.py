@@ -3,9 +3,10 @@ import copy
 import inspect
 from typing import Any, Literal
 from marshmallow import missing
-from sqlalchemy import inspect as sqlalchemy_inspect
+from sqlalchemy import (
+    inspect as sqlalchemy_inspect, Integer)
 from geoalchemy2.types import Geometry
-from sqlalchemy.sql.functions import GenericFunction
+from sqlalchemy.sql.functions import GenericFunction, Function
 from sqlalchemy.sql.schema import Sequence
 from sqlalchemy.sql.expression import False_ as sql_false
 from sqlalchemy.sql.expression import True_ as sql_true
@@ -14,8 +15,9 @@ from pumpwood_i8n.singletons import pumpwood_i8n as _
 from pumpwood_flaskviews.config import INFO_CACHE_TIMEOUT
 from pumpwood_communication.cache import default_cache
 from pumpwood_communication.type import (
-    MISSING, AUTOINCREMENT, ColumnInfo, ColumnExtraInfo, FileColumnExtraInfo,
-    OptionsColumnExtraInfo, PumpwoodMissingType, PrimaryKeyExtraInfo)
+    MISSING, AUTOINCREMENT, NOW, TODAY, ColumnInfo,
+    ColumnExtraInfo, FileColumnExtraInfo, OptionsColumnExtraInfo,
+    PumpwoodMissingType, PrimaryKeyExtraInfo)
 
 
 class AuxFillOptions:
@@ -24,7 +26,8 @@ class AuxFillOptions:
     HASH_DICT = {
         "context": "pumpwood_flaskviews",
         "end-point": "cls_fields_options",
-        "model_class": None}
+        "model_class": None,
+        "user_type": None}
     """Base of the hash dict."""
 
     TRANSLATION_TAG_TEMPLATE = "{model_class}__fields__{field}"
@@ -33,7 +36,7 @@ class AuxFillOptions:
     @classmethod
     def run(cls, model_class: object, serializer,
             view_file_fields: dict = None,
-            user_type: Literal['api', 'gui'] = 'api') -> dict[str, ColumnInfo]:
+            user_type: Literal['api', 'gui'] = 'api') -> dict[str, dict]:
         """Extract the information.
 
         Args:
@@ -51,15 +54,18 @@ class AuxFillOptions:
             Return a dictonary with keys of the fields and values a dictonary
             with description o the column.
         """
+        model_class_name = cls.get_model_class_name(
+            model_class=model_class)
         if view_file_fields is None:
             view_file_fields = {}
 
         # Retrieve local cache if avaiable
         hash_dict = cls.get_hash_dict(
-            model_class_name=model_class.__name__)
-        # cached_data = cls.fetch_cache(hash_dict=hash_dict)
-        # if cached_data is not None:
-        #     return cached_data
+            model_class_name=model_class_name,
+            user_type=user_type)
+        cached_data = cls.fetch_cache(hash_dict=hash_dict)
+        if cached_data is not None:
+            return cached_data
 
         # Generate data if cache is invalid
         mapper = cls.get_model_class_mapper(
@@ -71,13 +77,16 @@ class AuxFillOptions:
         related_fields = serializer_fields_data['related_fields']
         gui_readonly = serializer_fields_data['gui_readonly']
 
-        column_data = {}
         # Retrieve information from table fields
+        column_data = {}
         for column in mapper.columns:
             column_name = column.name
             temp_field = serializer_fields.get(column_name)
             info_dict = cls.create_field_info_dict(
-                column=column, field_data=temp_field,
+                column_name=column_name,
+                model_class_name=model_class_name,
+                column=column,
+                field_data=temp_field,
                 view_file_fields=view_file_fields,
                 foreign_keys=foreign_keys,
                 gui_readonly=gui_readonly,
@@ -88,6 +97,7 @@ class AuxFillOptions:
         for column_name, related_info in related_fields.items():
             temp_field = serializer_fields.get(column_name)
             info_dict = cls.create_related_field_info_dict(
+                model_class_name=model_class_name,
                 column_name=column_name,
                 field_data=temp_field,
                 related_info=related_info)
@@ -98,6 +108,7 @@ class AuxFillOptions:
         table_partitions = cls.get_table_partitions(
             model_class=model_class)
         info_dict = cls.create_pk_info_dict(
+            model_class_name=model_class_name,
             column_data=column_data,
             table_partitions=table_partitions)
         column_data['pk'] = info_dict
@@ -107,10 +118,11 @@ class AuxFillOptions:
         return column_data
 
     @classmethod
-    def get_hash_dict(cls, model_class_name: str) -> dict:
+    def get_hash_dict(cls, model_class_name: str, user_type: str) -> dict:
         """Get a base hash dict."""
         hash_dict = copy.deepcopy(cls.HASH_DICT)
         hash_dict['model_class'] = model_class_name
+        hash_dict['user_type'] = user_type
         return hash_dict
 
     @classmethod
@@ -124,6 +136,20 @@ class AuxFillOptions:
         return default_cache.set(
             hash_dict=hash_dict, value=data,
             expire=INFO_CACHE_TIMEOUT)
+
+    @classmethod
+    def get_model_class_name(cls, model_class) -> str:
+        """Get lower case name for the model_class class."""
+        if inspect.isclass(model_class):
+            return model_class.__name__.lower()
+        return model_class.__class__.__name__.lower()
+
+    @classmethod
+    def get_verbose_tag(cls, model_class_name: str, column_name: str) -> str:
+        """Get model class columns."""
+        return cls.TRANSLATION_TAG_TEMPLATE.format(
+            model_class=model_class_name,
+            field=column_name)
 
     @classmethod
     def get_model_class_mapper(cls, model_class):
@@ -163,6 +189,15 @@ class AuxFillOptions:
     @classmethod
     def get_default(cls, column, field_data) -> Any | PumpwoodMissingType:
         """Get default value for the column."""
+        col_type = type(column.type)
+
+        # Check if the column is an autoincrementing primary key
+        is_id_autoincrement = (
+            column.autoincrement in (True, 'auto') and
+            issubclass(col_type, Integer))
+        if is_id_autoincrement:
+            return AUTOINCREMENT
+
         # Check if there is a default information at serializer
         ser_field_default = MISSING
         if field_data is not None:
@@ -188,12 +223,25 @@ class AuxFillOptions:
         column_default = column.default
         if column_default is not None:
             arg = getattr(column_default, 'arg', None)
-            if isinstance(arg, GenericFunction):
-                return arg.description
+
+            if isinstance(arg, (GenericFunction, Function)):
+                name = getattr(arg, 'name', '').lower()
+                if name in ('now', 'current_timestamp'):
+                    return NOW
+                elif name in ('current_date', 'today'):
+                    return TODAY
+                return getattr(arg, 'name', str(arg))
+
+            elif inspect.isroutine(arg):
+                name = getattr(arg, '__name__', '').lower()
+                if name in ('now', 'utcnow', 'current_timestamp'):
+                    return NOW
+                elif name in ('today', 'current_date'):
+                    return TODAY
+                return arg.__name__ + '()'
+
             elif arg is dict:
                 return {}
-            elif inspect.isfunction(arg):
-                return arg.__name__ + "()"
             elif isinstance(column.default, Sequence):
                 return AUTOINCREMENT
             elif isinstance(arg, sql_false):
@@ -206,13 +254,36 @@ class AuxFillOptions:
         # Try to get the server_default from the default at Database level
         server_default = column.server_default
         if server_default is not None:
-            arg = getattr(column.server_default, 'arg', None)
-            if isinstance(arg, GenericFunction):
-                return arg.description
+            arg = getattr(server_default, 'arg', None)
+
+            if isinstance(arg, (GenericFunction, Function)):
+                name = getattr(arg, 'name', '').lower()
+                if name in ('now', 'current_timestamp'):
+                    return NOW
+                elif name in ('current_date', 'today'):
+                    return TODAY
+                return getattr(
+                    arg, 'description',
+                    getattr(arg, 'name', str(arg)))
+
+            if hasattr(arg, 'text'):
+                text_lower = str(arg.text).lower()
+                if 'now' in text_lower or 'current_timestamp' in text_lower:
+                    return NOW
+                elif 'current_date' in text_lower or 'today' in text_lower:
+                    return TODAY
+                return str(arg.text)
+
+            elif inspect.isroutine(arg):
+                name = getattr(arg, '__name__', '').lower()
+                if name in ('now', 'utcnow', 'current_timestamp'):
+                    return NOW
+                elif name in ('today', 'current_date'):
+                    return TODAY
+                return arg.__name__ + '()'
+
             elif arg is dict:
                 return {}
-            elif inspect.isfunction(arg):
-                return arg.__name__ + "()"
             elif isinstance(column.server_default, Sequence):
                 return AUTOINCREMENT
             elif isinstance(arg, sql_false):
@@ -221,6 +292,7 @@ class AuxFillOptions:
                 return True
             else:
                 return arg
+        return MISSING
 
     @classmethod
     def get_read_only(cls, column, field_data, gui_readonly,
@@ -264,23 +336,23 @@ class AuxFillOptions:
     def get_help_text(cls, column) -> bool:
         """Get help text."""
         if column.name == 'id':
-            return "autoincrement id"
+            return AUTOINCREMENT.help_text()
         else:
             return column.doc
 
     @classmethod
-    def get_column_verbose(cls, column_name) -> bool:
+    def get_column_verbose(cls, column_name: str, verbose_tag: str) -> str:
         """Get column name verbose."""
         return _.t(
             sentence=column_name,
-            tag=cls.TRANSLATION_TAG_TEMPLATE + "__column")
+            tag=verbose_tag + "__column")
 
     @classmethod
-    def get_help_text_verbose(cls, help_text) -> bool:
+    def get_help_text_verbose(cls, verbose_tag: str, help_text: str) -> str:
         """Get help text name verbose."""
         return _.t(
             sentence=help_text,
-            tag=cls.TRANSLATION_TAG_TEMPLATE + "__help_text")
+            tag=verbose_tag + "__help_text")
 
     @classmethod
     def get_column_name(cls, column) -> str:
@@ -295,10 +367,13 @@ class AuxFillOptions:
     @classmethod
     def get_unique(cls, column) -> bool:
         """Get unique."""
-        return column.unique
+        is_unique = getattr(column, 'unique', False)
+        if is_unique is None:
+            is_unique = False
+        return is_unique
 
     @classmethod
-    def _build_options_data(cls, column) -> dict:
+    def _build_options_data(cls, verbose_tag: str, column) -> dict:
         """Return the options associated with the field."""
         if isinstance(column.type, ChoiceType):
             in_dict = {}
@@ -307,22 +382,22 @@ class AuxFillOptions:
                     "value": choice[0],
                     "description__verbose": _.t(
                         sentence=choice[1],
-                        tag=(
-                            cls.TRANSLATION_TAG_TEMPLATE + "__choice__" +
-                            str(choice[0]))),
+                        tag=verbose_tag + "__choice__" + str(choice[0])
+                    ),
                     "description": choice[1]}
             return in_dict
         else:
             return MISSING
 
     @classmethod
-    def get_in(cls, column) -> bool:
+    def get_in(cls, column, verbose_tag) -> bool:
         """Get unique."""
-        return cls._build_options_data(column=column)
+        return cls._build_options_data(column=column, verbose_tag=verbose_tag)
 
     @classmethod
     def get_extra_info(cls, type_str: str, column, field_data,
-                       view_file_fields, foreign_keys) -> ColumnExtraInfo:
+                       view_file_fields, foreign_keys,
+                       verbose_tag: str) -> ColumnExtraInfo:
         """Get extra info for fields."""
         if type_str == 'foreign_key':
             foreign_key_field_data = foreign_keys.get(column.name)
@@ -332,7 +407,8 @@ class AuxFillOptions:
                 raise Exception("Something is not implemented correctly")
 
         if type_str == 'options':
-            in_data = cls._build_options_data(column=column)
+            in_data = cls._build_options_data(
+                column=column, verbose_tag=verbose_tag)
             return OptionsColumnExtraInfo(
                 in_=in_data)
 
@@ -343,6 +419,18 @@ class AuxFillOptions:
                     permited_file_types=permited_file_types)
             else:
                 raise Exception("Something is not implemented correctly")
+        return {}
+
+    @classmethod
+    def get_indexed(cls, column) -> bool:
+        """Return if column is indexed."""
+        is_indexed = getattr(column, 'index', False)
+        if is_indexed is None:
+            is_indexed = False
+        return (
+            is_indexed
+            or column.primary_key
+            or column.unique)
 
     @classmethod
     def get_primary_keys(cls, column_data) -> dict:
@@ -353,17 +441,21 @@ class AuxFillOptions:
             if item['primary_key']]
 
     @classmethod
-    def create_field_info_dict(cls, column, field_data, view_file_fields,
+    def create_field_info_dict(cls, column_name: str, model_class_name: str,
+                               column, field_data, view_file_fields,
                                foreign_keys, gui_readonly,
                                user_type: str = 'api') -> dict:
         """Create field info dictonary."""
         # Information to return
-        column_name = cls.get_column_name(
-            column=column)
+        verbose_tag = cls.get_verbose_tag(
+            column_name=column_name,
+            model_class_name=model_class_name)
+
         nullable = cls.get_nullable(
             column=column, field_data=field_data)
         default = cls.get_default(
-            column=column, field_data=field_data)
+            column=column,
+            field_data=field_data)
         read_only = cls.get_read_only(
             column=column, field_data=field_data,
             gui_readonly=gui_readonly, user_type=user_type)
@@ -372,41 +464,52 @@ class AuxFillOptions:
             foreign_keys=foreign_keys)
         help_text = cls.get_help_text(
             column=column)
-        column__verbose = cls.get_column_verbose(
-            column_name=column_name)
-        help_text__verbose = cls.get_help_text_verbose(
-            help_text=help_text)
         primary_key = cls.get_primary_key(
             column=column)
         unique = cls.get_unique(
             column=column)
         column_in = cls.get_in(
+            column=column, verbose_tag=verbose_tag)
+        indexed = cls.get_indexed(
             column=column)
+
+        # Verbose data
+        column__verbose = cls.get_column_verbose(
+            column_name=column_name, verbose_tag=verbose_tag)
+        help_text__verbose = cls.get_help_text_verbose(
+            help_text=help_text, verbose_tag=verbose_tag)
+
         extra_info = cls.get_extra_info(
             type_str=type_str, column=column,
             field_data=field_data, view_file_fields=view_file_fields,
-            foreign_keys=foreign_keys)
+            foreign_keys=foreign_keys, verbose_tag=verbose_tag)
         column_info = ColumnInfo(
             primary_key=primary_key, column=column_name,
             column__verbose=column__verbose, help_text=help_text,
             help_text__verbose=help_text__verbose, type_=type_str,
             nullable=nullable, read_only=read_only, unique=unique,
-            extra_info=extra_info, in_=column_in, default=default)
+            extra_info=extra_info, in_=column_in, default=default,
+            indexed=indexed)
         return column_info.to_dict()
 
     @classmethod
-    def create_related_field_info_dict(cls, column_name, field_data,
+    def create_related_field_info_dict(cls, model_class_name: str,
+                                       column_name: str, field_data,
                                        related_info) -> dict:
         """Create related field info dictonary."""
+        verbose_tag = cls.get_verbose_tag(
+            column_name=column_name,
+            model_class_name=model_class_name)
+
         nullable = True
         default = MISSING
         read_only = field_data.read_only
         type_str = 'related_model'
         help_text = field_data.help_text
         column__verbose = cls.get_column_verbose(
-            column_name=column_name)
+            column_name=column_name, verbose_tag=verbose_tag)
         help_text__verbose = cls.get_help_text_verbose(
-            help_text=help_text)
+            help_text=help_text, verbose_tag=verbose_tag)
         primary_key = False
         unique = False
         column_in = MISSING
@@ -416,13 +519,19 @@ class AuxFillOptions:
             column__verbose=column__verbose, help_text=help_text,
             help_text__verbose=help_text__verbose, type_=type_str,
             nullable=nullable, read_only=read_only, unique=unique,
-            extra_info=extra_info, in_=column_in, default=default)
+            extra_info=extra_info, in_=column_in, default=default,
+            indexed=False)
         return column_info.to_dict()
 
     @classmethod
-    def create_pk_info_dict(cls, table_partitions: list[str],
+    def create_pk_info_dict(cls, model_class_name: str,
+                            table_partitions: list[str],
                             column_data: dict) -> dict:
         """Create primary key column information."""
+        verbose_tag = cls.get_verbose_tag(
+            column_name='pk',
+            model_class_name=model_class_name)
+
         nullable = False
         default = MISSING
         read_only = False
@@ -431,9 +540,9 @@ class AuxFillOptions:
             'Primary key used to retrieve and filter data. It is `virtual` '
             'column check its definition at extra_info `columns`.')
         column__verbose = cls.get_column_verbose(
-            column_name=column_name)
+            column_name=column_name, verbose_tag=verbose_tag)
         help_text__verbose = cls.get_help_text_verbose(
-            help_text=help_text)
+            help_text=help_text, verbose_tag=verbose_tag)
         primary_key = False
         unique = True
         column_in = MISSING
@@ -453,5 +562,6 @@ class AuxFillOptions:
             column__verbose=column__verbose, help_text=help_text,
             help_text__verbose=help_text__verbose, type_=type_str,
             nullable=nullable, read_only=read_only, unique=unique,
-            extra_info=extra_info, in_=column_in, default=default)
+            extra_info=extra_info, in_=column_in, default=default,
+            indexed=True)
         return column_info.to_dict()

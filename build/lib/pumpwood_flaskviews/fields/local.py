@@ -305,9 +305,10 @@ class LocalForeignKeyField(Field):
 
     def to_dict(self):
         """Return a dict with values to be used on options end-point."""
+        self._load_model_class()
         source_keys = self._get_source_pk_fields()
         return ForeignKeyColumnExtraInfo(
-            model_class=self.model_class.__class__.__name__, many=False,
+            model_class=self.model_class.__name__, many=False,
             display_field=self.display_field, object_field=self.name,
             source_keys=source_keys)
 
@@ -551,8 +552,9 @@ class LocalRelatedField(Field):
 
     def to_dict(self):
         """Return a dict with values to be used on options end-point."""
+        self._load_model_class()
         return RelatedColumnExtraInfo(
-            model_class=self.model_class.__class__.__name__,
+            model_class=self.model_class.__name__,
             many=True,
             pk_field=self.pk_field,
             foreign_key=self.foreign_key,

@@ -1,4 +1,5 @@
 """Set base serializers for PumpWood systems."""
+import inspect
 from marshmallow import validates, fields, ValidationError, EXCLUDE
 from marshmallow_sqlalchemy import SQLAlchemyAutoSchema
 from pumpwood_flaskviews.fields import (
@@ -9,8 +10,9 @@ from pumpwood_communication.exceptions import PumpWoodQueryException
 
 def get_model_class(obj):
     """Get model's name and add a suffix if ENDPOINT_SUFFIX is set."""
-    model_name = obj.__class__.__name__
-    return model_name
+    if inspect.isclass(obj):
+        return obj.__name__
+    return obj.__class__.__name__
 
 
 class PumpWoodSerializer(SQLAlchemyAutoSchema):
@@ -179,7 +181,10 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
         for field_name, field in self._declared_fields.items():
             is_micro_fk = getattr(field, '_PUMPWOOD_FK', False)
             if is_micro_fk:
-                return_dict[field.source] = field.to_dict()
+                # Use the fist source which msut be the main fk associated
+                # with the id from the other model class
+                info_object = field.to_dict()
+                return_dict[info_object.source_keys[0]] = info_object
         return return_dict
 
     def get_related_fields(self) -> dict:
