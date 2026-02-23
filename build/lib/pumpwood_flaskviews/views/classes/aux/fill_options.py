@@ -3,8 +3,7 @@ import copy
 import inspect
 from typing import Any, Literal
 from marshmallow import missing
-from sqlalchemy import (
-    inspect as sqlalchemy_inspect, Integer)
+from sqlalchemy import inspect as sqlalchemy_inspect
 from geoalchemy2.types import Geometry
 from sqlalchemy.sql.functions import GenericFunction, Function
 from sqlalchemy.sql.schema import Sequence
@@ -189,13 +188,8 @@ class AuxFillOptions:
     @classmethod
     def get_default(cls, column, field_data) -> Any | PumpwoodMissingType:
         """Get default value for the column."""
-        col_type = type(column.type)
-
         # Check if the column is an autoincrementing primary key
-        is_id_autoincrement = (
-            column.autoincrement in (True, 'auto') and
-            issubclass(col_type, Integer))
-        if is_id_autoincrement:
+        if column.name == 'id':
             return AUTOINCREMENT
 
         # Check if there is a default information at serializer
@@ -454,8 +448,7 @@ class AuxFillOptions:
         nullable = cls.get_nullable(
             column=column, field_data=field_data)
         default = cls.get_default(
-            column=column,
-            field_data=field_data)
+            column=column, field_data=field_data)
         read_only = cls.get_read_only(
             column=column, field_data=field_data,
             gui_readonly=gui_readonly, user_type=user_type)
