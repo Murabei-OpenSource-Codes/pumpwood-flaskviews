@@ -59,7 +59,7 @@ class AuthFactory:
         user_response = None
         for _ in range(3):
             user_response = requests.get(
-                url, headers=auth_header, timeout=10)
+                url, headers=auth_header, timeout=60)
             if user_response.status_code in [200, 401]:
                 break
 
@@ -82,7 +82,7 @@ class AuthFactory:
         row_permission_response = None
         for _ in range(3):
             row_permission_response = requests.post(
-                url, headers=auth_header, timeout=10, json={})
+                url, headers=auth_header, timeout=60, json={})
             if row_permission_response.status_code in [200, 401]:
                 break
 
