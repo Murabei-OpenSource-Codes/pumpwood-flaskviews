@@ -40,7 +40,8 @@ class PumpwoodDBGuard:
 
     def _regenerate_connections(self) -> None:
         """Regenerate application connections."""
-        self.db.session.invalidate()
+        connection = self.db.session.connection()
+        connection.invalidate()
         self.db.session.rollback()
 
     def before_request_hook(self) -> None:
