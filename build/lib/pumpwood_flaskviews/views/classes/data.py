@@ -184,10 +184,11 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
 
         session = self.model_class.query.session
         pd_data_to_save = pd.DataFrame(data_to_save)
-        pd_data_cols = set(list(pd_data_to_save.columns))
+        set_data_cols = set(list(pd_data_to_save.columns))
 
         objects_to_load = []
-        if len(set(self.expected_cols_bulk_save) - pd_data_cols) == 0:
+        set_expected_cols = set(self.expected_cols_bulk_save)
+        if len(set_expected_cols - set_data_cols) == 0:
             for d in pd_data_to_save.to_dict("records"):
                 new_obj = self.model_class(**d)
                 objects_to_load.append(new_obj)
@@ -202,10 +203,13 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
             return {'saved_count': len(objects_to_load)}
         else:
             template = 'Expected columns and data columns do not match:' + \
-                '\nExpected columns: {expected}' + \
-                '\nData columns: {data_cols}'
+                '\nMissing columns: {missing_columns}' + \
+                '\nData columns: {data_cols}' + \
+                '\nExpected columns: {expected}'
+            missing_columns = set_expected_cols - set_data_cols
             raise exceptions.PumpWoodException(
                 message=template, payload={
-                    "expected": list(set(self.expected_cols_bulk_save)),
-                    "data_cols": list(pd_data_cols),
+                    "expected": list(set_expected_cols),
+                    "data_cols": list(set_data_cols),
+                    "missing_columns": list(missing_columns),
                 })
