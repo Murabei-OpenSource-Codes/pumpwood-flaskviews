@@ -10,7 +10,7 @@ from pumpwood_database_error.psycopg2_error import TreatPsycopg2Error
 from pumpwood_database_error.sqlalchemy_error import TreatSQLAlchemyError
 
 
-def register_pumpwood_view(app, view):
+def register_pumpwood_view(app, view, service_object: dict = None) -> None:
     """Register a pumpwood view.
 
     Args:
@@ -18,6 +18,9 @@ def register_pumpwood_view(app, view):
             Flask app to register the PumpWood View
         view (PumpWoodFlaskView or PumpWoodDataFlaskView):
             View to be registered
+        service_object (dict):
+            Serialized service object, if passed the view will be registered
+            as a route on Pumpwood Auth.
 
     Raises:
         No particular raises.

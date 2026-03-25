@@ -288,7 +288,7 @@ class PumpWoodFlaskView(View):
                     'gui_verbose_field': cls.gui_verbose_field,
                     'gui_readonly': cls.gui_readonly}}
             try:
-                cls.microservice.save(route_object)
+                return cls.microservice.save(route_object)
             except Exception as e:
                 msg = "Error when registering model [{model}]:\n{msg}".format(
                      model=model_class_name.lower(), msg=str(e))
