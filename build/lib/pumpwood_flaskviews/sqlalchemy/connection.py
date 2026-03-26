@@ -38,11 +38,10 @@ class PumpwoodDBGuard:
         """Check if database is avaiable."""
         self.db.session.execute(text("SELECT 1;"))
 
-    def _regenerate_connections(self) -> None:
+    def regenerate_connections(self) -> None:
         """Regenerate application connections."""
-        connection = self.db.session.connection()
-        connection.invalidate()
         self.db.session.rollback()
+        self.db.engine.dispose()
 
     def before_request_hook(self) -> None:
         """Function ran before each request."""
@@ -66,7 +65,7 @@ class PumpwoodDBGuard:
 
                     # Wait a litte before regen the connections
                     time.sleep(0.10)
-                    self._regenerate_connections()
+                    self.regenerate_connections()
                 else:
                     logger.exception("Database unavailable after max retries.")
                     raise e
