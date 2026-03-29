@@ -46,6 +46,12 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
        that tables with more the one partition at least the first one must
        be specified on the queries."""
 
+    HASH_DICT = {
+        'context': 'flaskviews--model-query-retrieve',
+        'model_class': None, 'pk': None, 'get-type': None
+    }
+    """Template for hash dictonary."""
+
     @classmethod
     def build_get_cache_hash(cls, pk: str | int,
                              get_type: Literal['default', 'query']
@@ -56,7 +62,9 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
              pk (str | int):
                 Primary to fetch the data.
              get_type (Literal('default', 'query')):
-                Type of the request that is been made.
+                Type of the request that is been made. 'default' is cache
+                associated with user row_permission filter and 'query'
+                are for caches without the row_permission filter.
 
         Returns:
             Return a dictionary with hash dict to cache get.
@@ -64,8 +72,7 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
         hash_dict = AuthFactory.get_auth_header()
         hash_dict = {
             'context': 'flaskviews--model-query-retrieve',
-            'model_class': cls.__name__,
-            'pk': pk,
+            'model_class': cls.__name__, 'pk': pk,
             'get-type': get_type}
         return default_cache._generate_hash(hash_dict)
 

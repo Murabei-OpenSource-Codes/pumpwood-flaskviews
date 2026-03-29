@@ -1,5 +1,6 @@
 """Module for auxiliary fuctions for fields."""
-from typing import Any
+import importlib
+from typing import Any, Callable
 from marshmallow import fields, missing
 from pumpwood_communication.exceptions import PumpWoodForbidden
 
@@ -52,3 +53,14 @@ def _get_overwrite_audit(field: fields.Field, data: dict,
 
     # Get overwrite information from key
     return data.get(overwrite_key)
+
+
+def _import_function_by_string(module: str | Any) -> Callable:
+    """Help importing a function using a string or function if not string."""
+    if not isinstance(module, str):
+        return module
+
+    module_name, function_name = module.rsplit('.', 1)
+    module = importlib.import_module(module_name)
+    func = getattr(module, function_name)
+    return func

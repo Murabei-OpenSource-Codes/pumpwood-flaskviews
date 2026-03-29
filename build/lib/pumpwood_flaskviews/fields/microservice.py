@@ -1,5 +1,6 @@
 """Pumpwood Marshmellow microservice fields."""
 import copy
+from dataclasses import dataclass
 from loguru import logger
 from typing import List, Dict, Any, Union
 from marshmallow.fields import Field
@@ -7,10 +8,27 @@ from pumpwood_communication import exceptions
 from pumpwood_communication.serializers import CompositePkBase64Converter
 from pumpwood_communication.microservices import PumpWoodMicroService
 from pumpwood_communication.type import (
-    ForeignKeyColumnExtraInfo, RelatedColumnExtraInfo)
+    ForeignKeyColumnExtraInfo, RelatedColumnExtraInfo,
+    PumpwoodDataclassMixin)
 from pumpwood_flaskviews.auth import AuthFactory
-from pumpwood_flaskviews.config import (
-    SERIALIZER_FK_CACHE_TIMEOUT)
+from pumpwood_flaskviews.cache import PumpwoodFlaskGCache
+from pumpwood_flaskviews.config import SERIALIZER_FK_CACHE_TIMEOUT
+
+
+@dataclass
+class MicroserviceForeignKeyFieldCacheHash(PumpwoodDataclassMixin):
+    """Dictionary to create cache hash dict for LocalForeignKeyField."""
+
+    authorization_token: str
+    """Request authorization token."""
+    model_class: str
+    """Model class for the autofill field."""
+    object_pk: str | int
+    """Pk associated with objecto to get the autofill field data."""
+    fields: str | None
+    """Field to extract data to fill object."""
+    context: str = 'pumpwood-flaskviews-local-foreignkey-field'
+    """Content of the file that will be returned at the action."""
 
 
 class MicroserviceForeignKeyField(Field):
@@ -115,6 +133,17 @@ class MicroserviceForeignKeyField(Field):
             fields (List[str]):
                 Limit the fields that will be returned using microservice.
         """
+        hash_dict = MicroserviceForeignKeyFieldCacheHash(
+            authorization_token=AuthFactory.get_auth_header()['Authorization'],
+            model_class=self.model_class, object_pk=object_pk,
+            fields=self.fields)
+        g_cached_data = PumpwoodFlaskGCache.get(hash_dict=hash_dict)
+        if g_cached_data is not None:
+            return g_cached_data
+
+        # If cache not found, retrieve data using microservice. At retrieve
+        # call on pumpwood it will also try to retrieve information
+        # from disk cache if avaiable.
         try:
             object_data = self.microservice.list_one(
                 model_class=self.model_class, pk=object_pk,
@@ -175,6 +204,7 @@ class MicroserviceForeignKeyField(Field):
                     "model_class": self.model_class,
                     "requester_username": user['username']}}
 
+        # Add display field to facilitate frontend development
         if self.display_field is not None:
             if self.display_field not in object_data.keys():
                 msg = (
@@ -192,6 +222,9 @@ class MicroserviceForeignKeyField(Field):
             object_data['__display_field__'] = object_data[self.display_field]
         else:
             object_data['__display_field__'] = None
+
+        # Set g object cache to reduce disk cache calls
+        PumpwoodFlaskGCache.set(hash_dict=hash_dict, value=object_data)
         return object_data
 
     def _serialize(self, value, attr, obj, **kwargs):

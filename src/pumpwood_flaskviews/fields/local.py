@@ -1,30 +1,21 @@
 """Pumpwood Marshmellow local reference fields."""
-import importlib
 import copy
+from dataclasses import dataclass
 from loguru import logger
-from typing import List, Dict, Any, Union, Callable
+from typing import List, Dict, Any, Union
 from marshmallow.fields import Field
 from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import Mapper, InstanceState
 from sqlalchemy.exc import NoInspectionAvailable
 from pumpwood_communication import exceptions
-from pumpwood_communication.cache import default_cache
 from pumpwood_communication.serializers import CompositePkBase64Converter
 from pumpwood_communication.type import (
-    ForeignKeyColumnExtraInfo, RelatedColumnExtraInfo)
+    ForeignKeyColumnExtraInfo, RelatedColumnExtraInfo,
+    PumpwoodDataclassMixin)
 from pumpwood_flaskviews.auth import AuthFactory
 from pumpwood_flaskviews.model import FlaskPumpWoodBaseModel
-
-
-def _import_function_by_string(module: str | Any) -> Callable:
-    """Help importing a function using a string or function if not string."""
-    if not isinstance(module, str):
-        return module
-
-    module_name, function_name = module.rsplit('.', 1)
-    module = importlib.import_module(module_name)
-    func = getattr(module, function_name)
-    return func
+from pumpwood_flaskviews.fields.aux import _import_function_by_string
+from pumpwood_flaskviews.cache import PumpwoodFlaskGDiskCache
 
 
 def _get_sqlalchemy_type(obj: Any) -> str:
@@ -46,6 +37,22 @@ def _get_sqlalchemy_type(obj: Any) -> str:
             return "instance"
     except NoInspectionAvailable:
         return "not_sqlalchemy"
+
+
+@dataclass
+class LocalForeignKeyFieldCacheHash(PumpwoodDataclassMixin):
+    """Dictionary to create cache hash dict for LocalForeignKeyField."""
+
+    authorization_token: str
+    """Request authorization token."""
+    model_class: str
+    """Model class for the autofill field."""
+    object_pk: str | int
+    """Pk associated with objecto to get the autofill field data."""
+    fields: str | None
+    """Field to extract data to fill object."""
+    context: str = 'pumpwood-flaskviews-local-foreignkey-field'
+    """Content of the file that will be returned at the action."""
 
 
 class LocalForeignKeyField(Field):
@@ -233,13 +240,12 @@ class LocalForeignKeyField(Field):
                 Limit the fields that will be returned using microservice.
         """
         # Use auth header and object pk and context to fetch cache
-        hash_dict = AuthFactory.get_auth_header()
-        hash_dict['model_class'] = self.model_class.__name__
-        hash_dict['object_pk'] = object_pk
-        hash_dict['fields'] = fields
-        hash_dict['context'] = 'pumpwood-flaskviews-local-foreignkey-field'
-
-        cache_result = default_cache.get(hash_dict=hash_dict)
+        hash_dict = LocalForeignKeyFieldCacheHash(
+            authorization_token=AuthFactory.get_auth_header()['Authorization'],
+            model_class=self.model_class.__name__,
+            object_pk=object_pk,
+            fields=fields)
+        cache_result = PumpwoodFlaskGDiskCache.get(hash_dict=hash_dict)
         if cache_result is not None:
             msg = "get from local cache[{name}]".format(
                 name=self.model_class.__name__)
@@ -258,8 +264,8 @@ class LocalForeignKeyField(Field):
                 self.display_field is set.
         """
         if self.display_field is not None:
-            object_data['__display_field__'] = object_data.get(
-                self.display_field)
+            object_data['__display_field__'] = \
+                object_data.get(self.display_field)
         return object_data
 
     def _serialize(self, value, attr, obj, **kwargs):
@@ -296,12 +302,13 @@ class LocalForeignKeyField(Field):
         data_result = self._retrieve_data(
             object_pk=object_pk, fields=self.fields)
         data_result = self._set_display_field(object_data=data_result)
-        default_cache.set(hash_dict=cache_data['hash_dict'], value=data_result)
+        PumpwoodFlaskGDiskCache.set(
+            hash_dict=cache_data['hash_dict'], value=data_result)
         return data_result
 
     def _deserialize(self, value, attr, data, **kwargs):
         raise NotImplementedError(
-            "MicroserviceForeignKeyField are read-only")
+            "LocalRelatedField are read-only")
 
     def to_dict(self):
         """Return a dict with values to be used on options end-point."""
