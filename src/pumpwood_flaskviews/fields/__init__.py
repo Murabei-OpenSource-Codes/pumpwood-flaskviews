@@ -13,7 +13,6 @@ from .row_permission import RowPermissionField
 from .autofill import AutoFillFieldLocal, AutoFillFieldMicroservice
 
 
-
 __all__ = [
     CreatedByIdField, ModifiedByIdField, CreatedAtField, ModifiedAtField,
     GeometryField, ChoiceField, PrimaryKeyField,
