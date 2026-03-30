@@ -2,6 +2,7 @@
 from loguru import logger
 from flask import g
 from typing import Literal
+from dataclasses import dataclass
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import Column, BigInteger
 from flask_sqlalchemy.query import Query
@@ -11,7 +12,8 @@ from pumpwood_flaskviews.auth import AuthFactory
 from pumpwood_communication.serializers import CompositePkBase64Converter
 from pumpwood_communication.exceptions import PumpWoodObjectDoesNotExist
 from pumpwood_communication.cache import default_cache
-# from pumpwood_flaskviews.sqlalchemy import get_session
+from pumpwood_communication.type import PumpwoodDataclassMixin
+from pumpwood_flaskviews.cache import PumpwoodFlaskGCache
 
 
 def _try_convert_int(value: str):
@@ -20,6 +22,22 @@ def _try_convert_int(value: str):
         return int(value)
     except (ValueError, TypeError):
         return value
+
+
+@dataclass
+class FlaskPumpWoodBaseModelCacheHash(PumpwoodDataclassMixin):
+    """Dictionary to create cache hash dict for LocalForeignKeyField."""
+
+    authorization_token: str
+    """Request authorization token."""
+    model_class: str
+    """Model class for the autofill field."""
+    object_pk: str | int
+    """Pk associated with objecto to get the autofill field data."""
+    get_type: Literal['default', 'query']
+    """Field to extract data to fill object."""
+    context: str = 'pumpwood-flaskviews-local-foreignkey-field'
+    """Content of the file that will be returned at the action."""
 
 
 class FlaskPumpWoodBaseModel(DeclarativeBase):
@@ -175,11 +193,12 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
         Return:
             Returns a SQLAlchemy object with corresponding primary key.
         """
-        hash_str = cls.build_get_cache_hash(
-            pk=pk, get_type='default')
-        cache_data = getattr(g, hash_str, None)
+        hash_dict = FlaskPumpWoodBaseModelCacheHash(
+            authorization_token=AuthFactory.get_auth_header()['Authorization'],
+            model_class=cls.__name__, object_pk=pk,
+            get_type='default')
+        cache_data = PumpwoodFlaskGCache.get(hash_dict=hash_dict)
         if cache_data is not None:
-            logger.info("default_query_get data retrieved from g object")
             return cache_data
 
         converted_pk = CompositePkBase64Converter.load(pk)
@@ -189,15 +208,14 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
             # on filter_by
             converted_pk = {'id': converted_pk}
 
-        # Use base query to filter object acording to user's permission
-        tmp_base_query = cls.default_filter_query(query=base_query)
+        # Use base query to filter object acording to user's permission,
+        # it is necessary to use filter_by on request because it is
+        # applied over a previous id
+        model_object = cls.default_filter_query(query=base_query)\
+            .filter_by(**converted_pk)\
+            .first()
 
-        # Since base query inject a filter retricting user information
-        # it is not possible to use .get
-        tmp_base_query_2 = tmp_base_query\
-            .filter_by(**converted_pk)
-        model_object = tmp_base_query_2.first()
-
+        # Raise error if not found and raise_error=True
         if model_object is None and raise_error:
             message = "Requested object {model_class}[{pk}] not found."
             raise PumpWoodObjectDoesNotExist(
@@ -206,7 +224,7 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
                     "pk": _try_convert_int(pk)})
 
         # Set a local cache for object using g object
-        setattr(g, hash_str, model_object)
+        PumpwoodFlaskGCache.set(hash_dict=hash_dict, value=model_object)
         return model_object
 
     @classmethod
@@ -272,11 +290,12 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
         Return:
             Returns a SQLAlchemy object with corresponding primary key.
         """
-        hash_str = cls.build_get_cache_hash(
-            pk=pk, get_type='query')
-        cache_data = getattr(g, hash_str, None)
+        hash_dict = FlaskPumpWoodBaseModelCacheHash(
+            authorization_token=AuthFactory.get_auth_header()['Authorization'],
+            model_class=cls.__name__, object_pk=pk,
+            get_type='query')
+        cache_data = PumpwoodFlaskGCache.get(hash_dict=hash_dict)
         if cache_data is not None:
-            logger.info("default_query_get data retrieved from g object")
             return cache_data
 
         converted_pk = CompositePkBase64Converter.load(pk)
@@ -293,7 +312,6 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
         # it is not possible to use .get
         model_object = tmp_base_query\
             .filter_by(**converted_pk).first()
-
         if model_object is None and raise_error:
             message = "Requested object {model_class}[{pk}] not found."
             raise PumpWoodObjectDoesNotExist(
@@ -302,5 +320,5 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
                     "pk": _try_convert_int(pk)})
 
         # Set a local cache for object using g object
-        setattr(g, hash_str, model_object)
+        PumpwoodFlaskGCache.set(hash_dict=hash_dict, value=model_object)
         return model_object
