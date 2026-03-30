@@ -1,6 +1,7 @@
 """Auxiliary functions for fill options and fields information."""
 import copy
 import inspect
+from dataclasses import dataclass
 from typing import Any, Literal
 from marshmallow import missing
 from sqlalchemy import inspect as sqlalchemy_inspect
@@ -16,7 +17,19 @@ from pumpwood_communication.cache import default_cache
 from pumpwood_communication.type import (
     MISSING, AUTOINCREMENT, NOW, TODAY, ColumnInfo,
     ColumnExtraInfo, FileColumnExtraInfo, OptionsColumnExtraInfo,
-    PumpwoodMissingType, PrimaryKeyExtraInfo)
+    PumpwoodMissingType, PrimaryKeyExtraInfo, PumpwoodDataclassMixin)
+
+
+@dataclass
+class AuxFillOptionsCacheHash(PumpwoodDataclassMixin):
+    """Dictionary to create cache hash dict for AutoFillFieldLocal."""
+
+    model_class: str
+    """Model class for the autofill field."""
+    user_type: Literal['gui', 'api']
+    """Pk associated with objecto to get the autofill field data."""
+    context: str = 'flaskviews--cls_fields_options'
+    """Content of the file that will be returned at the action."""
 
 
 class AuxFillOptions:
@@ -120,8 +133,9 @@ class AuxFillOptions:
     def get_hash_dict(cls, model_class_name: str, user_type: str) -> dict:
         """Get a base hash dict."""
         hash_dict = copy.deepcopy(cls.HASH_DICT)
-        hash_dict['model_class'] = model_class_name
-        hash_dict['user_type'] = user_type
+        hash_dict = AuxFillOptionsCacheHash(
+            model_class=model_class_name,
+            user_type=user_type)
         return hash_dict
 
     @classmethod
@@ -294,6 +308,7 @@ class AuxFillOptions:
         """Get read_only value for the column."""
         dump_only = getattr(
             field_data, 'dump_only', False)
+
         # Custom attribute to help with calculated custom fields on
         # pumpwood
         pumpwood_read_only = getattr(

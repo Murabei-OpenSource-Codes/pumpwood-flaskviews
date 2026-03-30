@@ -12,6 +12,7 @@ from pumpwood_flaskviews.auth import AuthFactory
 from pumpwood_flaskviews.fields.aux import (
     _get_overwrite_audit, _import_function_by_string)
 from pumpwood_flaskviews.cache import PumpwoodFlaskGDiskCache
+from pumpwood_communication.type import AUTO_FILL
 
 
 @dataclass
@@ -35,7 +36,10 @@ class AutoFillFieldLocal(Field):
     value with `fill_col` attribute from the other model.
     """
 
-    model_class: FlaskPumpWoodBaseModel
+    pumpwood_read_only = True
+    """Used on view to retrieve if field is read only for pumpwood."""
+
+    model_class: FlaskPumpWoodBaseModel = None
     """Model class that will be loded to request autofill field."""
 
     def __init__(self, fill_model_class: FlaskPumpWoodBaseModel | str,
@@ -64,6 +68,7 @@ class AutoFillFieldLocal(Field):
         """
         # Set allow_none to True by default if not explicitly provided
         kwargs['allow_none'] = True
+        kwargs['load_default'] = AUTO_FILL.value()
         self._pre_load_model_class = fill_model_class
         self._object_fk_column = object_fk_column
         self._fill_col = fill_col
@@ -137,6 +142,9 @@ class AutoFillFieldMicroservice(Field):
     value with `fill_col` key from the other model.
     """
 
+    pumpwood_read_only = True
+    """Used on view to retrieve if field is read only for pumpwood."""
+
     model_class: FlaskPumpWoodBaseModel
     """Model class that will be loded to request autofill field."""
 
@@ -166,6 +174,7 @@ class AutoFillFieldMicroservice(Field):
         """
         # Set allow_none to True by default if not explicitly provided
         kwargs['allow_none'] = True
+        kwargs['load_default'] = AUTO_FILL.value()
         self.model_class = model_class
         self.microservice = microservice
         self._object_fk_column = object_fk_column
