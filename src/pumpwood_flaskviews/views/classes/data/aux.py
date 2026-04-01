@@ -162,7 +162,7 @@ class FillBulkSaveFields:
                 missing_cache.append(fk_pk)
             else:
                 cached_value = cls.get_field_cache(
-                    model_class=field.fill_model_class.__name__,
+                    model_class=field.fill_model_class,
                     pk=fk_pk, field=field.fill_col)
                 if cached_value is None:
                     missing_cache.append(fk_pk)
@@ -177,11 +177,11 @@ class FillBulkSaveFields:
                 fields=['id', field.fill_col])
             for fk_obj in fk_objects:
                 fk_fill_value = fk_obj[field.fill_col]
-                map_fk_fill_data[fk_obj.id] = fk_fill_value
+                map_fk_fill_data[fk_obj['id']] = fk_fill_value
 
                 # Set cache
                 cls.set_field_cache(
-                    model_class=field.fill_model_class.__name__,
+                    model_class=field.fill_model_class,
                     pk=fk_pk, field=field.fill_col, value=fk_fill_value)
 
         data[field.field] = \
@@ -206,6 +206,16 @@ class FillBulkSaveFields:
                 final_cols.append(x.field)
             else:
                 final_cols.append(x)
+
+        has_duplicates = len(final_cols) != len(set(final_cols))
+        if has_duplicates:
+            msg = (
+                "There are duplicates in 'expected_cols_bulk_save' "
+                "attribute at view, check implementation and correct it. "
+                "Actual values [{expected_cols_bulk_save}]")
+            raise PumpWoodOtherException(
+                msg, payload={"expected_cols_bulk_save": fields})
+
         data_columns = set(data.columns)
         missing_cols = set(final_cols) - data_columns
         if len(missing_cols):
