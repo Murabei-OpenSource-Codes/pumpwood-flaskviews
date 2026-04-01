@@ -45,8 +45,10 @@ src/pumpwood_flaskviews/sqlalchemy/types.py
 src/pumpwood_flaskviews/views/__init__.py
 src/pumpwood_flaskviews/views/register.py
 src/pumpwood_flaskviews/views/classes/__init__.py
-src/pumpwood_flaskviews/views/classes/data.py
 src/pumpwood_flaskviews/views/classes/dimensions.py
 src/pumpwood_flaskviews/views/classes/simple.py
 src/pumpwood_flaskviews/views/classes/aux/__init__.py
 src/pumpwood_flaskviews/views/classes/aux/fill_options.py
+src/pumpwood_flaskviews/views/classes/data/__init__.py
+src/pumpwood_flaskviews/views/classes/data/aux.py
+src/pumpwood_flaskviews/views/classes/data/view.py

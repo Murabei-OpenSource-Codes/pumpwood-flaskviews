@@ -16,7 +16,7 @@ from pumpwood_communication.type import AUTO_FILL
 
 
 @dataclass
-class AutoFillFieldLocalCacheHash(PumpwoodDataclassMixin):
+class AutoFillFieldCacheHash(PumpwoodDataclassMixin):
     """Dictionary to create cache hash dict for AutoFillFieldLocal."""
 
     model_class: str
@@ -84,7 +84,7 @@ class AutoFillFieldLocal(Field):
     def _get_fill_value(self, pk: str) -> Any:
         """Get fill value from fill object."""
         model_class = self._get_model_class()
-        hash_dict = AutoFillFieldLocalCacheHash(
+        hash_dict = AutoFillFieldCacheHash(
             model_class=model_class.__name__.lower(),
             pk=pk, field=self._fill_col)
 
@@ -183,7 +183,7 @@ class AutoFillFieldMicroservice(Field):
 
     def _get_fill_value(self, pk: str) -> Any:
         """Get fill value from fill object."""
-        hash_dict = AutoFillFieldLocalCacheHash(
+        hash_dict = AutoFillFieldCacheHash(
             model_class=self.model_class.lower(),
             pk=pk, field=self._fill_col)
 

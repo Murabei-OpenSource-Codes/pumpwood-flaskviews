@@ -1,6 +1,4 @@
 """Functions and classes for flask/SQLAlchemy models."""
-from loguru import logger
-from flask import g
 from typing import Literal
 from dataclasses import dataclass
 from sqlalchemy.orm import DeclarativeBase
