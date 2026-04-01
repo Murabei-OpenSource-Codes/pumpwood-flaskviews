@@ -197,6 +197,7 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
         try:
             session.bulk_save_objects(objects_to_load)
             session.commit()
+            return len(objects_to_load)
         except Exception as e:
             session.rollback()
             raise e
