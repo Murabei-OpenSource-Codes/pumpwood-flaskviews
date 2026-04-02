@@ -23,7 +23,7 @@ from pumpwood_flaskviews.views.classes.aux import AuxFillOptions
 from pumpwood_flaskviews.inspection import model_has_column
 from pumpwood_flaskviews.query import SqlalchemyQueryMisc
 from pumpwood_flaskviews.auth import AuthFactory
-from pumpwood_flaskviews.action import load_action_parameters
+from pumpwood_flaskviews.action import LoadActionParameters
 from pumpwood_flaskviews.config import INFO_CACHE_TIMEOUT
 from pumpwood_i8n.singletons import pumpwood_i8n as _
 
@@ -855,19 +855,6 @@ class PumpWoodFlaskView(View):
         """
         session = self.get_session()
         model_object = self.pumpwood_pk_get(pk=pk)
-        if pk is not None and model_object is None:
-            message = "Requested object {model_class}[{pk}] not found.".format(
-                model_class=self.model_class.__mapper__.class_.__name__, pk=pk)
-            try:
-                pk = int(pk)
-            except Exception:
-                pk = pk
-
-            raise exceptions.PumpWoodObjectDoesNotExist(
-                message=message, payload={
-                    "model_class": self.model_class.__mapper__.class_.__name__,
-                    "pk": pk})
-
         temp_serializer = self.serializer(many=False)
         object_dump = temp_serializer.dump(model_object, many=False)
 
@@ -1270,14 +1257,6 @@ class PumpWoodFlaskView(View):
                     "Function is static and pk is not Null")
 
             model_object = self.pumpwood_pk_get(pk=pk)
-            if model_object is None:
-                message_template = (
-                    "Requested object {model_class}[{pk}] not found.")
-                temp_model_class = self.model_class.__mapper__.class_.__name__
-                raise exceptions.PumpWoodObjectDoesNotExist(
-                    message=message_template, payload={
-                        "model_class": temp_model_class,
-                        "pk": pk})
 
             # Retrieve function associated with action to inject the object as
             # self parameter
@@ -1288,7 +1267,8 @@ class PumpWoodFlaskView(View):
             temp_serializer = self.serializer(many=False, default_fields=True)
             object_dict = temp_serializer.dump(model_object)
 
-        loaded_parameters = load_action_parameters(action_fun, parameters)
+        loaded_parameters = LoadActionParameters.load(
+            func=action_fun, parameters=parameters)
         result = action_fun(**loaded_parameters)
 
         available_microservices = self.get_available_microservices()
