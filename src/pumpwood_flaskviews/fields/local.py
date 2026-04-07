@@ -243,8 +243,7 @@ class LocalForeignKeyField(Field):
         hash_dict = LocalForeignKeyFieldCacheHash(
             authorization_token=AuthFactory.get_auth_header()['Authorization'],
             model_class=self.model_class.__name__,
-            object_pk=object_pk,
-            fields=fields)
+            object_pk=object_pk, fields=fields)
         cache_result = PumpwoodFlaskGDiskCache.get(hash_dict=hash_dict)
         if cache_result is not None:
             msg = "get from local cache[{name}]".format(

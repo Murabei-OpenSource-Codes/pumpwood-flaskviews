@@ -1,6 +1,7 @@
 """Define pumpwood data views."""
 import pandas as pd
 import simplejson as json
+import numpy as np
 from flask import request
 from flask import jsonify
 from sqlalchemy import inspect as alchemy_inspect
@@ -183,21 +184,19 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
 
         session = self.model_class.query.session
         pd_data_to_save = pd.DataFrame(data_to_save)
+
+        # Replace NaN for None to insert on the database
         pd_data_to_save = FillBulkSaveFields.run(
             data=pd_data_to_save,
             fields=self.expected_cols_bulk_save,
-            microservice=self.microservice)
-
-        # Create all objects to be loaded
-        objects_to_load = []
-        for d in pd_data_to_save.to_dict("records"):
-            new_obj = self.model_class(**d)
-            objects_to_load.append(new_obj)
+            microservice=self.microservice)\
+            .replace({np.nan: None})
 
         try:
-            session.bulk_save_objects(objects_to_load)
+            session.bulk_insert_mappings(
+                self.model_class, pd_data_to_save.to_dict("records"))
             session.commit()
-            return len(objects_to_load)
+            return len(pd_data_to_save)
         except Exception as e:
             session.rollback()
             raise e

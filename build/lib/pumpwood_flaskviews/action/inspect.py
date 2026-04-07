@@ -101,4 +101,5 @@ class InspectType:
         return ActionReturnType(
             many=type_info['many'],
             type_=type_info['type'],
-            in_=type_info['in']).to_dict()
+            in_=type_info['in']
+        ).to_dict()

@@ -30,7 +30,7 @@ class FlaskPumpWoodBaseModelCacheHash(PumpwoodDataclassMixin):
     """Request authorization token."""
     model_class: str
     """Model class for the autofill field."""
-    object_pk: str | int
+    object_pk: str | int | dict
     """Pk associated with objecto to get the autofill field data."""
     get_type: Literal['default', 'query']
     """Field to extract data to fill object."""
@@ -168,7 +168,7 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
             return query_result.limit(limit)
 
     @classmethod
-    def default_query_get(cls, pk: str | int,
+    def default_query_get(cls, pk: str | int | dict,
                           base_query: Query = None,
                           raise_error: bool = True) -> object:
         """Get model_class object using pumpwood pk.
@@ -178,8 +178,10 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
         query.get to treat both possibilities.
 
         Args:
-            pk (str, int):
-                Pumpwood primary key.
+            pk (str, int, dict):
+                Pumpwood primary key. If the pk is already a dictonary
+                it will be considered ready to be passed to the
+                query.
             base_query (Query):
                 A base query to be used as initial filter.
             raise_error (bool):
@@ -199,12 +201,16 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
         if cache_data is not None:
             return cache_data
 
-        converted_pk = CompositePkBase64Converter.load(pk)
-        if isinstance(converted_pk, (int, float)):
-            # If a numeric data is passed as pk it is associated with
-            # 'id' field, it is necessary to convert to a dict to unpack
-            # on filter_by
-            converted_pk = {'id': converted_pk}
+        converted_pk = None
+        if isinstance(pk, dict):
+            converted_pk = pk
+        else:
+            converted_pk = CompositePkBase64Converter.load(pk)
+            if isinstance(converted_pk, (int, float)):
+                # If a numeric data is passed as pk it is associated with
+                # 'id' field, it is necessary to convert to a dict to unpack
+                # on filter_by
+                converted_pk = {'id': converted_pk}
 
         # Use base query to filter object acording to user's permission,
         # it is necessary to use filter_by on request because it is
@@ -269,7 +275,7 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
             return query_result.limit(limit)
 
     @classmethod
-    def query_get(cls, pk: str | int, base_query: Query = None,
+    def query_get(cls, pk: str | int | dict, base_query: Query = None,
                   raise_error: bool = True) -> object:
         """Get model_class object using pumpwood pk without base query filter.
 
@@ -278,8 +284,10 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
         query.get to treat both possibilities.
 
         Args:
-            pk (str, int):
-                Pumpwood primary key.
+            pk (str, int, dict):
+                Pumpwood primary key. If the pk is already a dictonary
+                it will be considered ready to be passed to the
+                query.
             base_query (Query):
                 A base query to be used as initial filter.
             raise_error (bool):
@@ -296,12 +304,16 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
         if cache_data is not None:
             return cache_data
 
-        converted_pk = CompositePkBase64Converter.load(pk)
-        if isinstance(converted_pk, (int, float)):
-            # If a numeric data is passed as pk it is associated with
-            # 'id' field, it is necessary to convert to a dict to unpack
-            # on filter_by
-            converted_pk = {'id': converted_pk}
+        converted_pk = None
+        if isinstance(pk, dict):
+            converted_pk = pk
+        else:
+            converted_pk = CompositePkBase64Converter.load(pk)
+            if isinstance(converted_pk, (int, float)):
+                # If a numeric data is passed as pk it is associated with
+                # 'id' field, it is necessary to convert to a dict to unpack
+                # on filter_by
+                converted_pk = {'id': converted_pk}
 
         # Use base query to filter object acording to user's permission
         tmp_base_query = cls.query if base_query is None else base_query
