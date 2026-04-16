@@ -5,7 +5,6 @@ pyproject.toml
 setup.py
 src/pumpwood_flaskviews/__init__.py
 src/pumpwood_flaskviews/config.py
-src/pumpwood_flaskviews/fields.py
 src/pumpwood_flaskviews/json.py
 src/pumpwood_flaskviews/query.py
 src/pumpwood_flaskviews.egg-info/PKG-INFO
