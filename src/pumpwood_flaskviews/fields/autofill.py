@@ -7,7 +7,8 @@ from pumpwood_communication.microservices import PumpWoodMicroService
 from pumpwood_communication.type import (
     PumpwoodDataclassMixin, AUTO_FILL)
 from pumpwood_communication.exceptions import (
-    PumpWoodOtherException, PumpWoodObjectSavingException)
+    PumpWoodOtherException, PumpWoodObjectSavingException,
+    PumpWoodObjectDoesNotExist)
 from pumpwood_communication.serializers import CompositePkBase64Converter
 from pumpwood_flaskviews.model import FlaskPumpWoodBaseModel
 from pumpwood_flaskviews.auth import AuthFactory
@@ -88,29 +89,48 @@ class AutoFillFieldLocal(Field):
         return self.model_class
 
     @classmethod
-    def validate_fields(cls, primary_keys: dict, data: dict) -> bool:
+    def validate_fields(cls, field_name: str, primary_keys: dict,
+                        data: dict, related_model: str) -> bool:
         """Validate fields to check for all fields necessary to autofill."""
         set_primary_keys_keys = set(primary_keys.keys())
         set_data_keys = set(data.keys())
         missing_keys = set_primary_keys_keys - set_data_keys
         if len(missing_keys) != 0:
             msg = (
-                "Autofill field [{}] use fields [{}] to query"
-                " related object and [{}] are not present "
-                "on object data.")
-            raise PumpWoodObjectSavingException()
+                "Autofill field [{field_name}] use fields [{primary_keys}] "
+                "to query related object and [{related_model}] are not "
+                "present on object data.")
+            raise PumpWoodObjectSavingException(
+                msg, payload={
+                    "field_name": field_name,
+                    "primary_keys": set_primary_keys_keys,
+                    "related_model": related_model})
 
-    def _build_fk(self, data: dict) -> FlaskPumpWoodBaseModel:
-        """Build fk dictionary using the object information."""
+    def _get_related_primary_keys(self):
+        """Get related primary keys fields and values."""
         primary_keys = {self._source: 'id'}
         primary_keys.update(self._complementary_source)
+        return primary_keys
+
+    def _build_fk(self, data: dict, primary_keys: dict
+                  ) -> FlaskPumpWoodBaseModel:
+        """Build fk dictionary using the object information."""
         object_pk = CompositePkBase64Converter.dump(
             obj=data, primary_keys=primary_keys)
         return object_pk
 
-    def _get_fill_value(self, pk: str) -> Any:
+    def _get_fill_value(self, data: dict, field_name: str) -> Any:
         """Get fill value from fill object."""
         model_class = self._get_model_class()
+        primary_keys = self._get_related_primary_keys()
+
+        # Validate if fields are correct
+        self.validate_fields(
+            field_name=field_name, primary_keys=primary_keys,
+            data=data, related_model=model_class.__name__)
+
+        # Build primary keys dictionary
+        pk = self._build_fk(data=data, primary_keys=primary_keys)
         hash_dict = AutoFillFieldCacheHash(
             model_class=model_class.__name__.lower(),
             pk=pk, field=self._fill_field)
@@ -120,8 +140,22 @@ class AutoFillFieldLocal(Field):
         if cached_data is not None:
             return cached_data
 
-        # Fetch information from database
-        fill_object = model_class.query_get(pk=pk)
+        # Fetch information from database and treat the error if the object
+        # was not found
+        try:
+            fill_object = model_class.query_get(pk=pk)
+        except PumpWoodObjectDoesNotExist as e:
+            msg = (
+                "Local Autofill was not able to fetch information from " +
+                "to local the attribute [{attribute}] at model [{model}] " +
+                ". The object pk[{pk}] was not found.")
+            raise PumpWoodObjectDoesNotExist(
+                msg, payload={
+                    "model": model_class.__name__,
+                    "attribute": self._fill_field,
+                    "pk": pk,
+                    "not_found_payload": e.to_dict()})
+
         if not hasattr(fill_object, self._fill_field):
             msg = (
                 "Local Autofill field is not correctly configured, "
@@ -158,8 +192,8 @@ class AutoFillFieldLocal(Field):
                     "source": self._source,
                     "model": model_class.__name__})
 
-        object_fk = self._build_fk(data=data)
-        fill_value = self._get_fill_value(pk=object_fk)
+        fill_value = self._get_fill_value(
+            data=data, field_name=attr)
         return fill_value
 
 
@@ -215,16 +249,48 @@ class AutoFillFieldMicroservice(Field):
         self._complementary_source = complementary_source
         super().__init__(*args, **kwargs)
 
-    def _build_fk(self, data: dict) -> FlaskPumpWoodBaseModel:
-        """Build fk dictionary using the object information."""
+    @classmethod
+    def validate_fields(cls, field_name: str, primary_keys: dict,
+                        data: dict, related_model: str) -> bool:
+        """Validate fields to check for all fields necessary to autofill."""
+        set_primary_keys_keys = set(primary_keys.keys())
+        set_data_keys = set(data.keys())
+        missing_keys = set_primary_keys_keys - set_data_keys
+        if len(missing_keys) != 0:
+            msg = (
+                "Microservice Autofill field [{field_name}] use fields "
+                "[{primary_keys}] to query related object and "
+                "[{related_model}] are not present on object data.")
+            raise PumpWoodObjectSavingException(
+                msg, payload={
+                    "field_name": field_name,
+                    "primary_keys": set_primary_keys_keys,
+                    "related_model": related_model})
+
+    def _get_related_primary_keys(self):
+        """Get related primary keys fields and values."""
         primary_keys = {self._source: 'id'}
         primary_keys.update(self._complementary_source)
+        return primary_keys
+
+    def _build_fk(self, data: dict, primary_keys: dict
+                  ) -> FlaskPumpWoodBaseModel:
+        """Build fk dictionary using the object information."""
         object_pk = CompositePkBase64Converter.dump(
             obj=data, primary_keys=primary_keys)
         return object_pk
 
-    def _get_fill_value(self, pk: str) -> Any:
+    def _get_fill_value(self, data: dict, field_name: str) -> Any:
         """Get fill value from fill object."""
+        primary_keys = self._get_related_primary_keys()
+
+        # Validate if fields are correct
+        self.validate_fields(
+            field_name=field_name, primary_keys=primary_keys,
+            data=data, related_model=self.model_class)
+
+        # Build primary keys dictionary
+        pk = self._build_fk(data=data, primary_keys=primary_keys)
         hash_dict = AutoFillFieldCacheHash(
             model_class=self.model_class.lower(),
             pk=pk, field=self._fill_field)
@@ -234,9 +300,24 @@ class AutoFillFieldMicroservice(Field):
         if cached_data is not None:
             return cached_data
 
-        fill_data = self.microservice.retrieve(
-            model_class=self.model_class, pk=pk,
-            fields=[self._fill_field])
+        # Fetch information from database and treat the error if the object
+        # was not found
+        try:
+            fill_data = self.microservice.retrieve(
+                model_class=self.model_class, pk=pk,
+                fields=[self._fill_field])
+        except PumpWoodObjectDoesNotExist as e:
+            msg = (
+                "Local Autofill was not able to fetch information from " +
+                "to local the attribute [{attribute}] at model [{model}] " +
+                ". The object pk[{pk}] was not found.")
+            raise PumpWoodObjectDoesNotExist(
+                msg, payload={
+                    "model": self.model_class,
+                    "attribute": self._fill_field,
+                    "pk": pk,
+                    "not_found_payload": e.to_dict()})
+
         if self._fill_field not in fill_data.keys():
             msg = (
                 "Microservice Autofill field is not correctly configured, "
@@ -272,6 +353,6 @@ class AutoFillFieldMicroservice(Field):
                     "source": self._source,
                     "model": self.model_class.__name__})
 
-        object_fk = self._build_fk(data=data)
-        fill_value = self._get_fill_value(pk=object_fk)
+        fill_value = self._get_fill_value(
+            data=data, field_name=attr)
         return fill_value
