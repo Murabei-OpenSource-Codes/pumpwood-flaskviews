@@ -182,7 +182,7 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
         if len(self.expected_cols_bulk_save) == 0:
             raise exceptions.PumpWoodException('Bulk save not avaiable.')
 
-        session = self.model_class.query.session
+        session = self.db.session
         pd_data_to_save = pd.DataFrame(data_to_save)
 
         # Replace NaN for None to insert on the database

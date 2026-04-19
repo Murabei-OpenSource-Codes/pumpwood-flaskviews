@@ -8,7 +8,8 @@ from pumpwood_flaskviews.query import (
     BaseQueryABC, BaseQueryNoFilter, SqlalchemyQueryMisc)
 from pumpwood_flaskviews.auth import AuthFactory
 from pumpwood_communication.serializers import CompositePkBase64Converter
-from pumpwood_communication.exceptions import PumpWoodObjectDoesNotExist
+from pumpwood_communication.exceptions import (
+    PumpWoodObjectDoesNotExist, PumpWoodOtherException)
 from pumpwood_communication.cache import default_cache
 from pumpwood_communication.type import PumpwoodDataclassMixin
 from pumpwood_flaskviews.cache import PumpwoodFlaskGCache
@@ -193,6 +194,9 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
         Return:
             Returns a SQLAlchemy object with corresponding primary key.
         """
+        # Is is not possible to unify the implementation because the cache
+        # for default query uses the base query filter and the query do not.
+        # Unify leads to cache inconstency.
         hash_dict = FlaskPumpWoodBaseModelCacheHash(
             authorization_token=AuthFactory.get_auth_header()['Authorization'],
             model_class=cls.__name__, object_pk=pk,
@@ -215,17 +219,25 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
         # Use base query to filter object acording to user's permission,
         # it is necessary to use filter_by on request because it is
         # applied over a previous id
-        model_object = cls.default_filter_query(query=base_query)\
-            .filter_by(**converted_pk)\
-            .first()
-
-        # Raise error if not found and raise_error=True
-        if model_object is None and raise_error:
+        model_object_results = cls.default_filter_query(query=base_query)\
+            .filter_by(**converted_pk).all()
+        if len(model_object_results) == 0 and raise_error:
             message = "Requested object {model_class}[{pk}] not found."
             raise PumpWoodObjectDoesNotExist(
                 message=message, payload={
                     "model_class": cls.__name__,
                     "pk": _try_convert_int(pk)})
+        elif len(model_object_results) != 1:
+            msg = (
+                "Get query for {model_class}[{pk}] returned more than "
+                "one object, check implementation.")
+            raise PumpWoodOtherException(
+                message=msg, payload={
+                    "model_class": cls.__name__,
+                    "pk": _try_convert_int(pk)})
+
+        # Get first element
+        model_object = model_object_results[0]
 
         # Set a local cache for object using g object
         PumpwoodFlaskGCache.set(hash_dict=hash_dict, value=model_object)
@@ -315,19 +327,29 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
                 # on filter_by
                 converted_pk = {'id': converted_pk}
 
-        # Use base query to filter object acording to user's permission
+        # Use base query if passed as parameter
         tmp_base_query = cls.query if base_query is None else base_query
 
-        # Since base query inject a filter retricting user information
-        # it is not possible to use .get
-        model_object = tmp_base_query\
-            .filter_by(**converted_pk).first()
-        if model_object is None and raise_error:
+        # Filter the objects acording to primary argument and treat the
+        # cases when the object is not found or when the query returns more
+        # then one result
+        model_object_results = tmp_base_query\
+            .filter_by(**converted_pk).all()
+        if len(model_object_results) == 0 and raise_error:
             message = "Requested object {model_class}[{pk}] not found."
             raise PumpWoodObjectDoesNotExist(
                 message=message, payload={
                     "model_class": cls.__name__,
                     "pk": _try_convert_int(pk)})
+        elif len(model_object_results) != 1:
+            msg = (
+                "Get query for {model_class}[{pk}] returned more than "
+                "one object, check implementation.")
+            raise PumpWoodOtherException(
+                message=msg, payload={
+                    "model_class": cls.__name__,
+                    "pk": _try_convert_int(pk)})
+        model_object = model_object_results[0]
 
         # Set a local cache for object using g object
         PumpwoodFlaskGCache.set(hash_dict=hash_dict, value=model_object)
