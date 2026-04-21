@@ -181,7 +181,6 @@ class AutoFillFieldLocal(Field):
         if overwrited_data is not missing:
             return overwrited_data
 
-        # Fetch row_permission_id from fill model
         if self._source not in data.keys():
             model_class = self._get_model_class()
             msg = (
@@ -343,7 +342,6 @@ class AutoFillFieldMicroservice(Field):
         if overwrited_data is not missing:
             return overwrited_data
 
-        # Fetch row_permission_id from fill model
         if self._source not in data.keys():
             msg = (
                 "It is not possible to get key [{source}] to "

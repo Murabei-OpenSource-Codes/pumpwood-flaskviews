@@ -1,6 +1,10 @@
 """Fields that have values encrypted on save."""
-from marshmallow import fields
+from marshmallow import fields, missing
 from pumpwood_communication.encrypt import PumpwoodCryptography
+from pumpwood_flaskviews.fields.aux import (
+    _get_overwrite_audit, _import_function_by_string)
+from pumpwood_flaskviews.auth import AuthFactory
+
 
 
 encrypt_obj = PumpwoodCryptography()
@@ -22,5 +26,19 @@ class EncryptedField(fields.Field):
 
     def _deserialize(self, value, attr, data):
         """Convert dictionary to object."""
-        encrypted_value = encrypt_obj.encrypt(value=value)
-        return encrypted_value
+        overwrited_data = _get_overwrite_audit(
+            field=self, data=data, current_user=None,
+            raise_not_superuser=False)
+        if overwrited_data is not missing:
+            encrypted_value = encrypt_obj.encrypt(value=value)
+            return encrypted_value
+
+        # Access the existing object from the schema context
+        existing_obj = getattr(self.parent, "instance", None)
+        if existing_obj is not None:
+            # If the object was already setted, get the value from the field
+            existing_value = getattr(existing_obj, attr, None)
+            return existing_value
+        else:
+            encrypted_value = encrypt_obj.encrypt(value=value)
+            return encrypted_value
