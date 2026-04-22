@@ -20,6 +20,12 @@ from pumpwood_communication.type import (
     PumpwoodMissingType, PrimaryKeyExtraInfo, PumpwoodDataclassMixin)
 
 
+try:
+    from pgvector.sqlalchemy import Vector
+except ImportError:
+    Vector = None
+
+
 @dataclass
 class AuxFillOptionsCacheHash(PumpwoodDataclassMixin):
     """Dictionary to create cache hash dict for AutoFillFieldLocal."""
@@ -329,7 +335,6 @@ class AuxFillOptions:
         temp_view_file_fields = view_file_fields or {}
         file_types = temp_view_file_fields.get(column.name)
         fk_data = foreign_keys.get(column.name)
-
         if isinstance(column.type, Geometry):
             return "geometry"
         if isinstance(column.type, ChoiceType):
@@ -338,6 +343,8 @@ class AuxFillOptions:
             return "file"
         if fk_data is not None:
             return "foreign_key"
+        if Vector is not None and isinstance(column.type, Vector):
+            return "list[float]"
         else:
             return column.type.python_type.__name__
 
