@@ -5,6 +5,73 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.15] - 2026-04-22
+### Added
+- Support for `pgvector` Vector type in `get_type` auxiliary helper (returned
+  as `list[float]`).
+
+### Fix
+- No fix.
+
+### Changed
+- No changes.
+
+
+## [1.5.12] - 2026-04-16
+### Added
+- No adds.
+
+### Fix
+- Correct pre hook for checking if the database is ok with pre-request query.
+
+### Changed
+- Add bether error treatment for AutoFill fields.
+
+## [1.5.10] - 2026-04-02
+### Added
+- No adds.
+
+### Fix
+- Refactor codes for action information and parameters parsing.
+
+### Changed
+- No change.
+
+## [1.5.8] - 2026-04-01
+### Added
+- Add Autofill to bulk save end-points.
+
+### Fix
+- No fix.
+
+### Changed
+- No change.
+
+## [1.5.7] - 2026-03-29
+### Added
+- Dataclass for creating hash_dict for fill options cache.
+- Autofill field to fetch information locally.
+
+### Fix
+- No fix.
+
+### Changed
+- No change.
+
+
+## [1.5.5] - 2026-03-29
+### Added
+- Add possibility to use g object to cache data in request, removing the
+  necessity to fetch all data from diskcache and having many copy of same
+  data.
+
+### Fix
+- No fix.
+
+### Changed
+- No change.
+
+
 ## [1.4.1] - 2026-02-17
 ### Added
 - No adds.

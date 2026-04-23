@@ -1,11 +1,14 @@
 """Module for auxiliary fuctions for fields."""
-from typing import Any
+import importlib
+from typing import Any, Callable
 from marshmallow import fields, missing
-from pumpwood_communication.exceptions import PumpWoodForbidden
+from pumpwood_communication.exceptions import (
+    PumpWoodForbidden, PumpWoodNotImplementedError)
 
 
 def _get_overwrite_audit(field: fields.Field, data: dict,
-                         current_user: dict) -> None | Any:
+                         current_user: dict,
+                         raise_not_superuser: bool = True) -> None | Any:
     """Get overwrite data for a field and check if user can overwrite.
 
     Only superusers can overwrite audit fields. Overwrite value will be
@@ -19,6 +22,8 @@ def _get_overwrite_audit(field: fields.Field, data: dict,
             from `'__overwrite__' + json_key` at request data.
         current_user (dict):
             Current user associated with request
+        raise_not_superuser (bool):
+            If True, raise PumpWoodForbidden if overwrite key is setted,
 
     Returns:
         Returns value associated with overwrite data or None if value not
@@ -31,15 +36,29 @@ def _get_overwrite_audit(field: fields.Field, data: dict,
     """
     # Check if overwrite key is setted on request dictionary
     json_key = (
-        field.data_key if field.data_key is not None else field.name)
+        field.data_key if field.data_key is not None
+        else field.name)
+
+    # Overwrite sufix can be used on protected fields
     overwrite_key = '__overwrite__' + json_key
     if overwrite_key not in data.keys():
         # Return missing to avoid None that can be a value
         return missing
-
     else:
-        is_superuser = current_user.get('is_superuser', False)
-        if not is_superuser:
+        is_superuser = False
+        if current_user is None:
+            # When user info is not provided 
+            is_superuser = False
+        elif isinstance(current_user, dict):
+            is_superuser = current_user.get('is_superuser', False)
+        else:
+            msg = (
+                "User information type not implemented type[{info_type}]")
+            raise PumpWoodNotImplementedError(
+                msg, payload={
+                    "info_type": str(type(current_user))})
+
+        if not is_superuser and raise_not_superuser:
             msg = (
                 "User is trying to overwrite an audit field [{json_key}], "
                 "using [{overwrite_key}] entry, but does not have associated "
@@ -52,3 +71,14 @@ def _get_overwrite_audit(field: fields.Field, data: dict,
 
     # Get overwrite information from key
     return data.get(overwrite_key)
+
+
+def _import_function_by_string(module: str | Any) -> Callable:
+    """Help importing a function using a string or function if not string."""
+    if not isinstance(module, str):
+        return module
+
+    module_name, function_name = module.rsplit('.', 1)
+    module = importlib.import_module(module_name)
+    func = getattr(module, function_name)
+    return func

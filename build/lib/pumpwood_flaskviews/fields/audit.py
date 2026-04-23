@@ -3,6 +3,7 @@ import datetime
 from marshmallow import fields, missing
 from pumpwood_flaskviews.auth import AuthFactory
 from pumpwood_flaskviews.fields.aux import _get_overwrite_audit
+from pumpwood_communication.type import NOW, LOGGED_USER
 
 
 class CreatedByIdField(fields.Integer):
@@ -21,7 +22,7 @@ class CreatedByIdField(fields.Integer):
         """__init__."""
         kwargs['allow_none'] = True
         kwargs['dump_only'] = False
-        kwargs['load_default'] = 'Logged user at creation'
+        kwargs['load_default'] = LOGGED_USER.value()
         super().__init__(*args, **kwargs)
 
     def deserialize(self, value, attr=None, data=None, **kwargs):
@@ -57,7 +58,7 @@ class ModifiedByIdField(fields.Integer):
         """__init__."""
         kwargs['allow_none'] = True
         kwargs['dump_only'] = False
-        kwargs['load_default'] = 'Logged user at update'
+        kwargs['load_default'] = LOGGED_USER.value()
         super().__init__(*args, **kwargs)
 
     def deserialize(self, value, attr=None, data=None, **kwargs):
@@ -89,7 +90,7 @@ class CreatedAtField(fields.DateTime):
         """__init__."""
         kwargs['allow_none'] = True
         kwargs['dump_only'] = False
-        kwargs['load_default'] = 'Datetime at creation'
+        kwargs['load_default'] = NOW.value()
         super().__init__(*args, **kwargs)
 
     def deserialize(self, value, attr=None, data=None, **kwargs):
@@ -121,7 +122,7 @@ class ModifiedAtField(fields.DateTime):
         """__init__."""
         kwargs['allow_none'] = True
         kwargs['dump_only'] = False
-        kwargs['load_default'] = 'Datetime at update'
+        kwargs['load_default'] = NOW.value()
         super().__init__(*args, **kwargs)
 
     def deserialize(self, value, attr=None, data=None, **kwargs):

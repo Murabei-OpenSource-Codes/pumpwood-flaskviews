@@ -24,6 +24,9 @@ This package assist the creation of views in flask using Pumpwood pattern.
   minutes (300), this cache timeout is used to reduce microservice call to
   bring foreign_key objects that might be present on other services on retrieve
   and list calls. Used on `MicroserviceForeignKeyField` field.
+- **PUMPWOOD_FLASKVIEWS__AUTHORIZATION_CACHE_TIMEOUT (int):** Default to 1
+  minute (60), this cache timeout is used for authorization and row permission
+  cache.
 
 ## pumpwood_flaskviews.action
 Expose models functions at the API. It is possible to expose normal and
@@ -31,7 +34,7 @@ classmethods, the first argument for each one should respect the convention
 self and cls respectively.
 
 ```
-from pumpwoodflask_views.action import action
+from pumpwood_flaskviews.action import action
 
 
 class Person(db.Model):
@@ -46,48 +49,36 @@ class Person(db.Model):
 
     @action(info='Marry person to another.')
     def marry(self, person_id: int, contract: str = None) -> bool:
-        """
-        Marry person to another one.
+        """Marry person to another one.
 
-        Args
-        ----
-        person_id: int
-          Id of the person to whom the object should be married.
+        Args:
+            person_id (int):
+                Id of the person to whom the object should be married.
+            contract (str):
+                Set the legal contract used.
 
-        Kwargs
-        ----------
-        contract: str
-          Set the legal contract used.
-
-        Returns
-        -------
-        bool
-            Returns true if it was possible to process the action.
+        Returns:
+            bool:
+                Returns true if it was possible to process the action.
         """
         ...
         return True
 
     @classmethod
-    @action(info='Send cards to today's birthday.')
+    @action(info="Send cards to today's birthday.")
     def process_birthday_cards(cls, reference_date: datetime.datetime) -> int:
-        """
-        Send birthday cards to every one with birthday today. If reference_date
-        if reference_date is passed it will be used instead of today as
-        reference.
+        """Send birthday cards to every one with birthday today.
 
-        Args
-        ----
-        No args.
+        If reference_date if reference_date is passed it will be used instead
+        of today as reference.
 
-        Kwargs
-        ----------
-        reference_date: datetime.datetime
-          Reference date to check for birthdays.
+        Args:
+            reference_date (datetime.datetime):
+                Reference date to check for birthdays.
 
-        Returns
-        -------
-        int
-            Number of birthday cards sent.
+        Returns:
+            int:
+                Number of birthday cards sent.
         """
         ...
         return True
@@ -150,7 +141,7 @@ Define pumpwood basic views. They have always the same pattern:
 ##### description [str]:
 Description of the model, this can be used to display model
 navegation on side bar. During call to end-point information
-this attribute will be passed to i8s for translation.
+this attribute will be passed to i18n for translation.
 
 ##### dimensions [dict]:
 Dictionary of tag/value, this will be registred at model class
@@ -279,18 +270,18 @@ It is possible to modify function `get_gui_readonly` to make list_fields to adap
 - pivot (/rest/[model_class]/pivot/): Retrieve data using query dict, but
     instead of using serializers use pandas data frame and parse result with
     to_dict. It is possible to pivot data using the columns.
-- bulk_save (/rest/[model_class]/bulk-save/): Bulck save data on database.
+- bulk_save (/rest/[model_class]/bulk-save/): Bulk save data on database.
 
-<b>PumpWoodDimentionsFlaskView</b>
+<b>PumpWoodDimensionsFlaskView</b>
 - Same as PumpWoodFlaskView...
-- list_dimentions (/rest/[model_class]/list-dimentions/): List avaiable
-    dimentions in objects resulting from the query.
-- list_dimention_values (/rest/[model_class]/list-dimention-values/): List
-    values associated with dimentions in objects resulting from the query.
+- list_dimensions (/rest/[model_class]/list-dimensions/): List available
+    dimensions in objects resulting from the query.
+- list_dimension_values (/rest/[model_class]/list-dimension-values/): List
+    values associated with dimensions in objects resulting from the query.
 
 Example for defining a PumpWoodFlaskView:
 ```python
-from pumpwoodflask_views.views import PumpWoodFlaskView
+from pumpwood_flaskviews.views import PumpWoodFlaskView
 from models import Person
 from serializers import PersonSerializer
 from singletons import storage_object, microservice
@@ -300,7 +291,7 @@ class PersonView(PumpWoodFlaskView):
     description = "Person"
 
     # Used when registering end-point on routes
-    dimentions = {
+    dimensions = {
         "service": "test-service",
         "type": "human",
     }
@@ -315,7 +306,7 @@ class PersonView(PumpWoodFlaskView):
     foreign_keys = {
         'married_to_id': {
           'model_class': 'Person', 'many': False,
-          'display_field': 'name'}
+          'display_field': 'name'},
         'children_set': {
             'model_class': 'Children', 'many': True,
             'foreign_key': 'parent_id', 'read_only': True},

@@ -10,6 +10,7 @@ from .local import (
 from .encrypt import EncryptedField
 from .readonly import ReadOnlyChoiceField
 from .row_permission import RowPermissionField
+from .autofill import AutoFillFieldLocal, AutoFillFieldMicroservice
 
 
 __all__ = [
@@ -17,4 +18,5 @@ __all__ = [
     GeometryField, ChoiceField, PrimaryKeyField,
     MicroserviceForeignKeyField, MicroserviceRelatedField,
     EncryptedField, LocalForeignKeyField, LocalRelatedField,
-    ReadOnlyChoiceField, RowPermissionField]
+    ReadOnlyChoiceField, RowPermissionField, AutoFillFieldLocal,
+    AutoFillFieldMicroservice]

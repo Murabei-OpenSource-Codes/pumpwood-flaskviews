@@ -1,15 +1,15 @@
 """Define pumpwood data views."""
 import pandas as pd
 import simplejson as json
+import numpy as np
 from flask import request
 from flask import jsonify
 from sqlalchemy import inspect as alchemy_inspect
 from pumpwood_communication import exceptions
 from pumpwood_flaskviews.query import SqlalchemyQueryMisc
 from pumpwood_flaskviews.inspection import model_has_column
-
-# Import simple views
-from .simple import PumpWoodFlaskView
+from pumpwood_flaskviews.views.classes.data.aux import FillBulkSaveFields
+from pumpwood_flaskviews.views.classes.simple import PumpWoodFlaskView
 
 
 class PumpWoodDataFlaskView(PumpWoodFlaskView):
@@ -182,30 +182,21 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
         if len(self.expected_cols_bulk_save) == 0:
             raise exceptions.PumpWoodException('Bulk save not avaiable.')
 
-        session = self.model_class.query.session
+        session = self.db.session
         pd_data_to_save = pd.DataFrame(data_to_save)
-        pd_data_cols = set(list(pd_data_to_save.columns))
 
-        objects_to_load = []
-        if len(set(self.expected_cols_bulk_save) - pd_data_cols) == 0:
-            for d in pd_data_to_save.to_dict("records"):
-                new_obj = self.model_class(**d)
-                objects_to_load.append(new_obj)
+        # Replace NaN for None to insert on the database
+        pd_data_to_save = FillBulkSaveFields.run(
+            data=pd_data_to_save,
+            fields=self.expected_cols_bulk_save,
+            microservice=self.microservice)\
+            .replace({np.nan: None})
 
-            try:
-                session.bulk_save_objects(objects_to_load)
-                session.commit()
-            except Exception as e:
-                session.rollback()
-                raise e
-
-            return {'saved_count': len(objects_to_load)}
-        else:
-            template = 'Expected columns and data columns do not match:' + \
-                '\nExpected columns: {expected}' + \
-                '\nData columns: {data_cols}'
-            raise exceptions.PumpWoodException(
-                message=template, payload={
-                    "expected": list(set(self.expected_cols_bulk_save)),
-                    "data_cols": list(pd_data_cols),
-                })
+        try:
+            session.bulk_insert_mappings(
+                self.model_class, pd_data_to_save.to_dict("records"))
+            session.commit()
+            return len(pd_data_to_save)
+        except Exception as e:
+            session.rollback()
+            raise e
