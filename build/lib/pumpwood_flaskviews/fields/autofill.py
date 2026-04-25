@@ -349,7 +349,7 @@ class AutoFillFieldMicroservice(Field):
             raise PumpWoodObjectSavingException(
                 msg, payload={
                     "source": self._source,
-                    "model": self.model_class.__name__})
+                    "model": self.model_class})
 
         fill_value = self._get_fill_value(
             data=data, field_name=attr)
