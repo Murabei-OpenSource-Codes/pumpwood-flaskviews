@@ -44,7 +44,7 @@ class EncryptedField(fields.Field):
             existing_value = getattr(existing_obj, attr, None)
             return existing_value
         else:
-            if overwrited_data is not missing:
+            if value is not missing:
                 # If the object was not setted, encrypt the value on the first
                 # save
                 return encrypt_obj.encrypt(value=value)

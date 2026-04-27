@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [1.5.18] - 2026-04-27
+### Added
+- No adds.
+
+### Fix
+- Adjusted exception payload in `AutoFillFieldMicroservice` to pass the 
+  `model_class` directly instead of its name.
+- Use `isinstance()` for type validation in `MicroserviceForeignKeyField` 
+  to adhere to Python best practices.
+
+### Changed
+- Refined `EncryptedField` logic to prevent re-encryption when updating 
+  objects by checking for the existing instance.
+
+
+## [1.5.17] - 2026-04-27
+### Added
+- No adds.
+
+### Fix
+- Initial implementation of re-encryption prevention for `EncryptedField`.
+
+### Changed
+- Renamed `_deserialize` to `deserialize` in `EncryptedField` to correctly 
+  override the Marshmallow public API.
+
+
+## [1.5.16] - 2026-04-25
+### Added
+- No adds.
+
+### Fix
+- No fix.
+
+### Changed
+- Minor internal adjustments to `AutoFillFieldMicroservice` error handling.
+
+
 ## [1.5.15] - 2026-04-22
 ### Added
 - Support for `pgvector` Vector type in `get_type` auxiliary helper (returned
