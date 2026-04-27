@@ -26,13 +26,10 @@ class EncryptedField(fields.Field):
 
     def deserialize(self, value, attr, data):
         """Convert dictionary to object."""
-        print("value:", value)
-        print("attr:", attr)
-        print("data:", data)
         overwrited_data = _get_overwrite_audit(
             field=self, data=data, current_user=None,
             raise_not_superuser=False)
-        print("overwrited_data:", overwrited_data)
+
         if overwrited_data is not missing:
             encrypted_value = encrypt_obj.encrypt(value=overwrited_data)
             return encrypted_value
@@ -47,7 +44,9 @@ class EncryptedField(fields.Field):
             existing_value = getattr(existing_obj, attr, None)
             return existing_value
         else:
-            # If the object was not setted, encrypt the value on the first
-            # save
-            encrypted_value = encrypt_obj.encrypt(value=value)
-            return encrypted_value
+            if overwrited_data is not missing:
+                # If the object was not setted, encrypt the value on the first
+                # save
+                return encrypt_obj.encrypt(value=value)
+            else:
+                return value

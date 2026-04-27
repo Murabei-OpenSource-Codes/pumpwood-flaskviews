@@ -82,10 +82,10 @@ class MicroserviceForeignKeyField(Field):
             else complementary_source)
 
         # Validations
-        if type(source) is not str:
+        if not isinstance(source, str):
             msg = "source argument must be a string"
             raise exceptions.PumpWoodOtherException(message=msg)
-        if type(complementary_source) is not dict:
+        if not isinstance(complementary_source, dict):
             msg = "complementary_source argument must be a dictonary"
             raise exceptions.PumpWoodOtherException(message=msg)
 
