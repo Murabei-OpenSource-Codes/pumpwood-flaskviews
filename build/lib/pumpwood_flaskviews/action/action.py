@@ -7,23 +7,23 @@ from pumpwood_flaskviews.action.inspect import InspectType
 
 
 class Action:
-    """Define a Action class to be used in decorator action."""
+    """Internal class used to metadata-decorate a PumpWood action.
+
+    Extracts signature, parameters, and return information from a
+    wrapped function to expose it via the API.
+    """
 
     def __init__(self, func: Callable, info: str, required_role: str):
-        """__init__.
-
-        Action class will inspect the function and extract the arguments and
-        return information.
+        """Initialize the Action metadata by inspecting the function.
 
         Args:
             func (Callable):
-                Function that will be associated with a Pumpwood action.
+                The function to be exposed as an action.
             info (str):
-                Action description that will be associated with action.
+                A human-readable description of the action.
             required_role (str):
-                Role that is required to run the action, if not set
-                the role set by the end-point permition at Pumpwood
-                Auth.
+                The role required to execute the action. If 'default',
+                it inherits endpoint permissions from PumpWood Auth.
         """
         # Unwrapp the function in case of the function be also anootated
         # by another decorator
@@ -67,8 +67,8 @@ class Action:
         self.info = info
         self.required_role = required_role
 
-    def to_dict(self):
-        """Return dict representation of the action."""
+    def to_dict(self) -> dict:
+        """Return a dictionary representation of the action metadata."""
         result = ActionInfomation(
             action_name=self.action_name,
             is_static_function=self.is_static_function,
@@ -81,19 +81,17 @@ class Action:
 
 
 def action(info: str = "", required_role: str = 'default'):
-    """Define decorator that will convert the function into a rest action.
+    """Decorator to expose a function as a PumpWood API action.
 
     Args:
         info (str):
-            Just an information about the decorated function that will be
-            returned in GET /rest/<model_class>/actions/.
+            Description returned in the actions list.
         required_role (str):
-            Role required to run the action, `default` will be set by
-            the permission associated with end-point.
+            The role required to run the action.
 
     Returns:
-        func: Action decorator.
-
+        Callable:
+            The wrapped function with action metadata attached.
     """
     def action_decorator(func):
         func.is_action = True

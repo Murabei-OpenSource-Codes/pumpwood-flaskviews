@@ -10,21 +10,23 @@ from pumpwood_database_error.psycopg2_error import TreatPsycopg2Error
 from pumpwood_database_error.sqlalchemy_error import TreatSQLAlchemyError
 
 
-def register_pumpwood_view(app, view, service_object: dict = None) -> None:
-    """Register a pumpwood view.
+def register_pumpwood_view(app: object, view: object,
+                           service_object: dict = None) -> None:
+    """Register a PumpWood view and its associated error handlers.
+
+    Registers CRUD and action routes for the multi-argument URL patterns
+    used by PumpWood views. Automatically attaches standardized error
+    handlers for SQLAlchemy, Psycopg2, and Marshmallow validation
+    errors.
 
     Args:
-        app (Flask App):
-            Flask app to register the PumpWood View
-        view (PumpWoodFlaskView or PumpWoodDataFlaskView):
-            View to be registered
+        app (Flask):
+            The Flask application instance.
+        view (type):
+            The PumpWood view class or instance to register.
         service_object (dict):
-            Serialized service object, if passed the view will be registered
-            as a route on Pumpwood Auth.
-
-    Raises:
-        No particular raises.
-
+            Optional metadata describing the service for automatic
+            registration in PumpWood Auth.
     """
     model_class_name = view.model_class.__name__
     suffix = os.getenv('ENDPOINT_SUFFIX', '')

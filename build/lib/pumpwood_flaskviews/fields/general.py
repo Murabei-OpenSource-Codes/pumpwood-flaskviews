@@ -1,4 +1,4 @@
-"""Pumpwood Marshmellow general fields."""
+"""Pumpwood Marshmallow general fields."""
 from geoalchemy2.shape import from_shape, to_shape
 from shapely import geometry
 from marshmallow import fields
@@ -9,11 +9,10 @@ from pumpwood_communication.serializers import CompositePkBase64Converter
 
 # Based on @om-henners om-henners/serializer_utils.py
 class GeometryField(fields.Field):
-    """Create a marshmallow field to recieve geometry data.
+    """Marshmallow field to handle geometry data serialization.
 
-    Use shapely and geoalchemy2 to serialize / deserialize a point
-    Does make a big assumption about the data being spat back out as
-    JSON, but what the hey.
+    Utilizes Shapely and GeoAlchemy2 to manage point data. Assumes
+    output format is compatible with GeoJSON mappings.
     """
 
     def _serialize(self, value, attr, obj):
@@ -28,30 +27,26 @@ class GeometryField(fields.Field):
 
 
 class ChoiceField(fields.Field):
-    """Create a marshmallow field to serialize ChoiceFields."""
+    """Marshmallow field to serialize and validate ChoiceFields."""
 
     def __init__(self, *args, choices: list[tuple] = None, **kwargs):
-        """__init__.
+        """Initialize the choice field.
 
         Args:
             choices (list[tuple]):
-                Choices that will be used to validate the deserialization of
-                the fields. It must be ser as a list of tuples or lists with
-                ('code', 'User readble') format.
+                A list of (code, human_readable) tuples or lists used to
+                validate the field values.
             *args:
-                Other marshmallow fields position paramerters.
+                Positional arguments for the base Marshmallow Field.
             **kwargs:
-                Other marshmallow fields named paramerters.
+                Keyword arguments for the base Marshmallow Field.
 
         Example:
-            ```
-            field_choice = ChoiceField(
-                choices=[
-                    ('choice_1', 'This is choice 1'),
-                    ('choice_2', 'This is choice 2'),
-                    ('choice_3', 'This is choice 3'),
-                ])
-            ```
+            >>> field_choice = ChoiceField(
+            >>>     choices=[
+            >>>         ('choice_1', 'Choice One'),
+            >>>         ('choice_2', 'Choice Two'),
+            >>>     ])
         """
         self.choices = choices
         validators = kwargs.pop("validate", [])
@@ -62,7 +57,7 @@ class ChoiceField(fields.Field):
         super().__init__(validate=validators, *args, **kwargs)
 
     def _validate_choice(self, value):
-        """Validate choices at the field."""
+        """Validate if the provided value is among the allowed choices."""
         if self.allow_none and value is None:
             return None
         check_value = None
@@ -99,7 +94,11 @@ class ChoiceField(fields.Field):
 
 
 class PrimaryKeyField(fields.Function):
-    """Create a marshmallow field to serialize ChoiceFields."""
+    """Marshmallow field to serialize primary keys as Base64 strings.
+
+    Supports composite primary keys by encoding them into a single
+    Base64 string.
+    """
 
     _primary_keys = None
 

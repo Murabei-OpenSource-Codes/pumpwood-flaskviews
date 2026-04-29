@@ -7,18 +7,29 @@ from pumpwood_communication.exceptions import PumpWoodActionArgsException
 
 
 class LoadActionParameters:
-    """Load action parameter to correct python types acording to tips."""
+    """Helper to cast action parameters to their annotated Python types.
+
+    Uses type hints to recursively convert JSON data into domain-specific
+    Python objects (dates, lists of specific types, etc.).
+    """
 
     @classmethod
-    def load(cls, func: typing.Callable, parameters: dict):
+    def load(cls, func: typing.Callable, parameters: dict) -> dict:
         """Cast JSON arguments to their annotated Python types.
 
         Args:
-            func:
-                Function that will have it's aruments loaded in the correct
-                types.
-            parameters:
-                Parameters of the function to be loaded.
+            func (Callable):
+                The function whose signature will be used for casting.
+            parameters (dict):
+                A dictionary of raw parameter values from the API.
+
+        Returns:
+            dict:
+                A dictionary of casted arguments ready for function call.
+
+        Raises:
+            PumpWoodActionArgsException:
+                If required arguments are missing or casting fails.
         """
         unwrapped_func = inspect.unwrap(func)
         signature = inspect.signature(unwrapped_func)
@@ -124,8 +135,13 @@ class LoadActionParameters:
         return val
 
     @classmethod
-    def _raise_arg_exception(cls, errors):
-        """Helper to format the final exception message."""
+    def _raise_arg_exception(cls, errors: dict):
+        """Format and raise a PumpWoodActionArgsException.
+
+        Args:
+            errors (dict):
+                A dictionary of error details per argument.
+        """
         fields_with_error = []
         for k, v in errors.items():
             fields_with_error.append(k)
