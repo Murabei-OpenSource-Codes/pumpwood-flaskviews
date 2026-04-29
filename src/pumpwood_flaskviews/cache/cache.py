@@ -7,7 +7,11 @@ from pumpwood_communication.cache import default_cache
 
 
 class PumpwoodFlaskGCache:
-    """Class to help set and retrieve cached data from requests."""
+    """Helper to manage request-scoped caching using the Flask `g` object.
+
+    Provides a simple key-value store tied to the lifecycle of a single
+    HTTP request.
+    """
 
     CACHE_DICT_ATT: str = "pumpwood_cache"
     """Name of the attribute at the g object to cache information in
@@ -15,13 +19,11 @@ class PumpwoodFlaskGCache:
 
     @classmethod
     def get_cache_dict(cls) -> dict:
-        """Get the cache dict at the g object.
-
-        Args:
-            No args.
+        """Retrieve or initialize the cache dictionary within the `g` object.
 
         Returns:
-            Return the dictionary for caching data at g object.
+            dict:
+                The dictionary stored in `g.pumpwood_cache`.
         """
         if not hasattr(g, cls.CACHE_DICT_ATT):
             setattr(g, cls.CACHE_DICT_ATT, {})
@@ -29,32 +31,33 @@ class PumpwoodFlaskGCache:
 
     @classmethod
     def generate_hash(cls, hash_dict: dict) -> str:
-        """Generate hash for cache using communication generate_hash.
+        """Generate a consistent hash string from a dictionary.
 
         Args:
             hash_dict (dict):
-                A dictonary with information that will be used on hash.
+                A dictionary containing the key components for hashing.
 
         Returns:
-            Return a hash that will be used as cache.
+            str:
+                A deterministic hash string.
         """
         return default_cache.generate_hash(hash_dict=hash_dict)
 
     @classmethod
     def get(cls, hash_dict: dict, copy_value: bool = False) -> Any:
-        """Get a value from cache.
+        """Retrieve a value from the request-scoped cache.
 
         Args:
             hash_dict (dict):
-                A dictonary with information that will be used on hash.
+                A dictionary representing the cache key.
             copy_value (bool):
-                Use deep copy to copy the content of the cached value to
-                return the possibility of changes on complex variables like
-                list and dict has not desired behavior due to memory
-                reference.
+                If True, returns a deepcopy of the cached data. Use this
+                to prevent modification of the shared cache state by
+                subsequent logic.
 
         Returns:
-            Return the cached value or None if not found.
+            Any:
+                The cached value or None if not found.
         """
         hash_str = cls.generate_hash(hash_dict=hash_dict)
         cache_dict = cls.get_cache_dict()
@@ -74,16 +77,17 @@ class PumpwoodFlaskGCache:
 
     @classmethod
     def set(cls, hash_dict: dict, value: Any) -> bool:
-        """Set cache value.
+        """Store a value in the request-scoped cache.
 
         Args:
             hash_dict (dict):
-                A dictonary with information that will be used on hash.
+                A dictionary representing the cache key.
             value (Any):
-                Value that will be set on diskcache.
+                The value to be cached.
 
         Returns:
-            Return a boolean value
+            bool:
+                Always returns True.
         """
         hash_str = cls.generate_hash(hash_dict=hash_dict)
         cache_dict = cls.get_cache_dict()
@@ -92,23 +96,29 @@ class PumpwoodFlaskGCache:
 
 
 class PumpwoodFlaskGDiskCache:
-    """Create a double layer of caching using in request g and diskcache."""
+    """A dual-layer cache leveraging both `g` (RAM) and `DiskCache`.
+
+    Prioritizes fast request-scoped memory before falling back to
+    persistent disk storage.
+    """
 
     @classmethod
     def get(cls, hash_dict: dict, copy_value: bool = False) -> Any:
-        """Get a value from cache.
+        """Retrieve a value from the multi-layer cache.
+
+        Checks the request-scoped `g` object first, then queries the
+        configured DiskCache.
 
         Args:
             hash_dict (dict):
-                A dictonary with information that will be used on hash.
+                A dictionary representing the cache key.
             copy_value (bool):
-                Use deep copy to copy the content of the cached value to
-                return the possibility of changes on complex variables like
-                list and dict has not desired behavior due to memory
-                reference.
+                If True, returns a deepcopy of the result to prevent
+                in-memory mutation.
 
         Returns:
-            Return the cached value or None if not found.
+            Any:
+                The cached value or None if missing from both layers.
         """
         g_cached_data = PumpwoodFlaskGCache.get(
             hash_dict=hash_dict, copy_value=copy_value)
@@ -127,21 +137,21 @@ class PumpwoodFlaskGDiskCache:
     @classmethod
     def set(cls, hash_dict: dict, value: Any, expire: int = None,
             tag_dict: dict = None) -> bool:
-        """Set cache value.
+        """Store a value in both the request-scoped and global disk caches.
 
         Args:
             hash_dict (dict):
-                A dictonary with information that will be used on hash.
+                A dictionary representing the cache key.
             value (Any):
-                Value that will be set on diskcache.
+                The value to store.
             expire (int):
-                Number of seconds that will be considered as expirity time.
+                Seconds until the global cache entry expires.
             tag_dict (dict):
-                Optional parameter to set a tag to cache. Tagged cache can be
-                envicted together using envict function.
+                Metadata tags used for bulk eviction.
 
         Returns:
-            Return a boolean value
+            bool:
+                Always returns True.
         """
         PumpwoodFlaskGCache.set(hash_dict=hash_dict, value=value)
         default_cache.set(

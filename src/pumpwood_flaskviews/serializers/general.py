@@ -8,8 +8,17 @@ from pumpwood_flaskviews.fields import (
 from pumpwood_communication.exceptions import PumpWoodQueryException
 
 
-def get_model_class(obj):
-    """Get model's name and add a suffix if ENDPOINT_SUFFIX is set."""
+def get_model_class(obj: object | type) -> str:
+    """Retrieve the class name of the given object or class.
+
+    Args:
+        obj (object | type):
+            The instance or class to inspect.
+
+    Returns:
+        str:
+            The name of the class.
+    """
     if inspect.isclass(obj):
         return obj.__name__
     return obj.__class__.__name__
@@ -25,29 +34,25 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
                  related_fields: bool = False, many: bool = False,
                  default_fields: bool = False,
                  only: list = None, *args, **kwargs) -> None:
-        """Overide Schema init to restrict dump.
+        """Initialize the serializer with specific visibility constraints.
 
         Args:
             fields (list):
-                List of the fields that will be returned at the
-                serializer. Backward compatibylity, it will be migrated
-                to only to be similar with marshmallow API.
+                Legacy parameter for specific fields. (Alias for `only`).
             only (list):
-                Will restrict the fields that will be serialized.
+                Restricts the fields to be serialized.
             foreign_key_fields (bool):
-                If foreign key associated fields should be returned at the
-                serializer.
+                If True, includes expanded foreign key relations.
             related_fields (bool):
-                If related fields M2M fields should be returned at the
-                serializer.
+                If True, includes expanded M2M relations.
             default_fields (bool):
-                With the default fields should be returned.
+                If True, uses the default field set defined in `Meta`.
             many (bool):
-                If it will be passed a list of instances or just one.
+                Whether serializing a collection or a single instance.
             *args:
-                Compatibility with other versions.
+                For compatibility with base class.
             **kwargs:
-                Compatibility with other versions.
+                For compatibility with base class.
         """
         kwargs["many"] = many
 
@@ -103,16 +108,18 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
         super().__init__(**kwargs)
 
     def _validate_fields(self, fields: list[str] | None) -> None:
-        """Validate if fields are declared at Serializer or at Model.
+        """Validate if the provided fields exist on the model or serializer.
 
         Args:
             fields (list[str] | None):
-                Fields that will validated.
+                The fields to validate.
+
+        Returns:
+            None
 
         Raises:
             PumpWoodQueryException:
-                Raise PumpWoodQueryException if fields are not present on
-                model or serializer.
+                If any field is missing from the model and declaration.
         """
         if fields is None:
             return None
@@ -134,14 +141,11 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
                     "model": self.opts.model.__name__})
 
     def get_list_fields(self) -> list:
-        """Get list fields from serializer.
+        """Retrieve the default list fields from Meta or declared keys.
 
-        Args:
-            No Args.
-
-        Return:
-            Default fields to be used at list and retrive with
-            default_fields=True.
+        Returns:
+            list:
+                The set of fields used for default serialization.
         """
         list_fields = getattr(self.Meta, 'list_fields', None)
         if list_fields is None:
@@ -150,14 +154,11 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
         return list_fields
 
     def get_gui_readonly(self) -> list:
-        """Get list fields from serializer.
+        """Retrieve the list of fields marked as read-only for the GUI.
 
-        Args:
-            No Args.
-
-        Return:
-            Default fields to be used at list and retrive with
-            default_fields=True.
+        Returns:
+            list:
+                Field names that should be read-only in frontend views.
         """
         gui_readonly = getattr(self.Meta, 'gui_readonly', None)
         if gui_readonly is None:
@@ -165,17 +166,11 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
         return gui_readonly
 
     def get_foreign_keys(self) -> dict:
-        """Return a dictonary with all foreign_key fields.
+        """Map all declared microservice or local foreign key fields.
 
-        Args:
-            No Args.
-
-        Kwargs:
-            No Kwargs.
-
-        Return:
-            Return a dictionary with field name as keys and relation
-            information as value.
+        Returns:
+            dict:
+                A dictionary mapping field names to relation metadata.
         """
         return_dict = {}
         for field_name, field in self._declared_fields.items():
@@ -188,17 +183,11 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
         return return_dict
 
     def get_related_fields(self) -> dict:
-        """Return a dictionary with all related fields (M2M).
+        """Map all declared microservice or local related (M2M) fields.
 
-        Args:
-            No Args.
-
-        Kwargs:
-            No Kwargs.
-
-        Return:
-            Return a dictionary with field name as keys and relation
-            information as value.
+        Returns:
+            dict:
+                A dictionary mapping field names to relation metadata.
         """
         return_dict = {}
         for field_name, field in self._declared_fields.items():
@@ -216,8 +205,17 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
                     value, self.model.__name__))
 
 
-def validate_categorical_value(n):
-    """Check if categorical value is valid. Greater than zero and Integer."""
+def validate_categorical_value(n: int | float):
+    """Validate that a value is a non-negative integer.
+
+    Args:
+        n (int | float):
+            The value to validate.
+
+    Raises:
+        ValidationError:
+            If the value is negative or not an integer.
+    """
     if n < 0:
         raise ValidationError('Quantity must be greater than 0.')
     if type(n) is not int:

@@ -2,84 +2,99 @@
 import pandas as pd
 import simplejson as json
 import numpy as np
-from flask import request
-from flask import jsonify
+from typing import Union
+from flask import request, jsonify, Response
 from sqlalchemy import inspect as alchemy_inspect
 from pumpwood_communication import exceptions
 from pumpwood_flaskviews.query import SqlalchemyQueryMisc
 from pumpwood_flaskviews.inspection import model_has_column
 from pumpwood_flaskviews.views.classes.data.aux import FillBulkSaveFields
 from pumpwood_flaskviews.views.classes.simple import PumpWoodFlaskView
+from pumpwood_flaskviews.exceptions import PumpWoodFlaskViewEndPointFoundError
 
 
 class PumpWoodDataFlaskView(PumpWoodFlaskView):
-    """Class view for models that hold data."""
+    """View class for models holding large datasets.
+
+    Provides specialized endpoints for pivoting data and performing
+    high-performance bulk insertions.
+    """
 
     _view_type = "data"
 
     model_variables = []
     expected_cols_bulk_save = []
 
-    def dispatch_request(self, end_point, first_arg=None, second_arg=None):
-        """dispatch_request for view, add pivot end point."""
+    def dispatch_request(self, end_point: str, first_arg: str = None,
+                         second_arg: str = None) -> Response:
+        """Dispatch the request, including pivot and bulk-save endpoints.
+
+        Args:
+            end_point (str):
+                The endpoint identifier.
+            first_arg (str):
+                The first URL argument.
+            second_arg (str):
+                The second URL argument.
+
+        Returns:
+            Response:
+                The Flask response object.
+
+        Raises:
+            PumpWoodException:
+                If the endpoint or method combination is not implemented.
+        """
         # Check if it is possible to treat request using simple,
         # if not check for dimension end-point, if not than raise not found
         # error
         try:
             return super().dispatch_request(end_point, first_arg, second_arg)
-        except exceptions.PumpWoodException as e:
+
+        except PumpWoodFlaskViewEndPointFoundError as e:
             # Treat request payload
-            data = None
-            if request.method.lower() in ('post', 'put'):
-                if request.mimetype == 'application/json':
-                    data = request.get_json()
-                else:
-                    data = request.form.to_dict()
-                    for k in data.keys():
-                        data[k] = json.loads(data[k])
+            data = self._get_request_payload(request=request) or {}
 
             if end_point == 'pivot' and request.method.lower() == 'post':
-                endpoint_dict = data or {}
-                return jsonify(self.pivot(**endpoint_dict))
+                return jsonify(self.pivot(**data))
 
             if end_point == 'bulk-save' and request.method.lower() == 'post':
-                endpoint_dict = data or []
                 return jsonify(self.bulk_save(data_to_save=data))
-
             raise e
 
-    def pivot(self, filter_dict: None | dict = None,
-              exclude_dict: None | dict = None, order_by: None | list = None,
-              columns: None | list = None, format: str = 'list',
+    def pivot(self, filter_dict: dict = None,
+              exclude_dict: dict = None, order_by: list = None,
+              columns: list = None, format: str = 'list',
               variables: list = None, show_deleted: bool = False,
               add_pk_column: bool = False, limit: int = None,
-              **kwargs):
-        """Pivot end-point.
+              **kwargs) -> Union[dict, list]:
+        """Query data in a long format and pivot it based on columns.
 
         Args:
             filter_dict (dict):
-                Dictionary with the arguments to be used in filter.
+                Filters to apply before pivoting.
             exclude_dict (dict):
-                Dictionary with the arguments to be used in exclude.
+                Exclusions to apply before pivoting.
             order_by (list):
-                List of fields to be used in ordering.
+                Ordering criteria for the source query.
             columns (list):
-                Columns to be used in pivoting
+                Fields to be used as pivot columns.
             format (str):
-                Format to be used in pivot, same argument used in
-                pandas to_dict.
+                Pandas dictionary format for the output.
             variables (list):
-                List of the columns to be returned.
+                Fields to include in the query (unpivoted).
             show_deleted (bool):
-                If column deleted is available
-                show deleted rows. By default those columns are removed.
+                If True, includes soft-deleted rows.
             add_pk_column (bool):
-                Add pk column to the results facilitating
-                the pagination of long dataframes.
+                If True, adds primary keys to ensure row uniqueness.
             limit (int):
-                Limit results to limit n rows.
+                Maximum number of source rows to process.
             **kwargs:
-                For compatibylity of previous versions and super function.
+                For compatibility and extensibility.
+
+        Returns:
+            Union[dict, list]:
+                The pivoted data in the requested format.
         """
         # Set list and dicts in the fuction to no bug with pointers
         filter_dict = {} if filter_dict is None else filter_dict
@@ -166,16 +181,20 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
             response = {str(k): v for k, v in response.items()}
         return response
 
-    def bulk_save(self, data_to_save: list):
-        """Bulk save data.
+    def bulk_save(self, data_to_save: list) -> int:
+        """Perform a high-performance bulk insertion of records.
 
         Args:
-            data_to_save(list):
-                List of dictionaries which must have
-                self.expected_cols_bulk_save.
+            data_to_save (list):
+                A list of dictionaries containing the object data.
 
-        Return:
-            Dictionary with ['saved_count'] for total of saved objects.
+        Returns:
+            int:
+                The total number of records successfully saved.
+
+        Raises:
+            PumpWoodException:
+                If bulk saving is not enabled for the view.
         """
         session = self.get_session()
 

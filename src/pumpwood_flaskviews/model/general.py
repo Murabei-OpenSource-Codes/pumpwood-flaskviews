@@ -16,7 +16,17 @@ from pumpwood_flaskviews.cache import PumpwoodFlaskGCache
 
 
 def _try_convert_int(value: str):
-    """Helper function to set type of the pk at error payload."""
+    """Helper function to set type of the pk at error payload.
+
+    Args:
+        value (str):
+            The value to be converted to integer.
+
+    Returns:
+        int | str:
+            The integer value if conversion is successful,
+            otherwise the original string.
+    """
     try:
         return int(value)
     except (ValueError, TypeError):
@@ -25,7 +35,12 @@ def _try_convert_int(value: str):
 
 @dataclass
 class FlaskPumpWoodBaseModelCacheHash(PumpwoodDataclassMixin):
-    """Dictionary to create cache hash dict for LocalForeignKeyField."""
+    """Dictionary to create cache hash dict for LocalForeignKeyField.
+
+    This dataclass is used to generate a unique hash for caching
+    purposes, ensuring that the same object is not fetched multiple
+    times during a single request.
+    """
 
     authorization_token: str
     """Request authorization token."""
@@ -42,7 +57,8 @@ class FlaskPumpWoodBaseModelCacheHash(PumpwoodDataclassMixin):
 class FlaskPumpWoodBaseModel(DeclarativeBase):
     """Flask Sqlalchemy Database Connection.
 
-    - adds a id column for all models
+    It adds an 'id' column automatically for all models that inherit
+    from this base class.
     """
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
@@ -76,15 +92,16 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
         """Build get hash dict.
 
         Args:
-             pk (str | int):
-                Primary to fetch the data.
-             get_type (Literal('default', 'query')):
-                Type of the request that is been made. 'default' is cache
-                associated with user row_permission filter and 'query'
-                are for caches without the row_permission filter.
+            pk (str | int):
+                Primary key to fetch the data.
+            get_type (Literal['default', 'query']):
+                Type of the request that is being made. 'default' is
+                cache associated with user row_permission filter and
+                'query' are for caches without the row_permission filter.
 
         Returns:
-            Return a dictionary with hash dict to cache get.
+            str:
+                A string representing the hash for the cache.
         """
         hash_dict = AuthFactory.get_auth_header()
         hash_dict = {
@@ -95,25 +112,33 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
 
     @classmethod
     def default_filter_query(cls, query: Query = None,
-        filter_dict: dict = None, exclude_dict: dict = None,
-        order_by: list[str] = None) -> Query:
-        """Create a query with defailt filter.
+                             filter_dict: dict = None,
+                             exclude_dict: dict = None,
+                             order_by: list[str] = None) -> Query:
+        """Create a query with default filter.
 
-        Use base query object to add default filter to objects. Base query
-        object might use auth_header.
+        Use base query object to add default filter to objects. Base
+        query object might use auth_header.
 
         Args:
             query (Query):
                 Query used as starting point.
             filter_dict (dict):
-                Dictionary to be used in filter operations.
-                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
+                Dictionary to be used in filter operations. See
+                pumpwood_miscellaneous.SqlalchemyQueryMisc
+                documentation.
             exclude_dict (dict):
-                Dictionary to be used in filter operations.
-                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
+                Dictionary to be used in filter operations. See
+                pumpwood_miscellaneous.SqlalchemyQueryMisc
+                documentation.
             order_by (list):
-                Dictionary to be used in filter operations.
-                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
+                List of fields to be used in order by operations.
+                See pumpwood_miscellaneous.SqlalchemyQueryMisc
+                documentation.
+
+        Returns:
+            Query:
+                SQLAlchemy Query object with default filters applied.
         """
         filter_dict = {} if filter_dict is None else filter_dict
         exclude_dict = {} if exclude_dict is None else exclude_dict
@@ -128,25 +153,29 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
                            exclude_dict: dict = None,
                            order_by: list = None, limit: int = None,
                            base_query: Query = None) -> Query:
-        """Create a list query using parameter and appling default filters.
+        """Create a list query using parameter and applying default filters.
 
         Args:
             filter_dict (dict):
-                Dictionary to be used in filter operations.
-                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
+                Dictionary to be used in filter operations. See
+                pumpwood_miscellaneous.SqlalchemyQueryMisc
+                documentation.
             exclude_dict (dict):
-                Dictionary to be used in filter operations.
-                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
+                Dictionary to be used in filter operations. See
+                pumpwood_miscellaneous.SqlalchemyQueryMisc
+                documentation.
             order_by (list):
-                Dictionary to be used in filter operations.
-                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
+                List of fields to be used in order by operations.
+                See pumpwood_miscellaneous.SqlalchemyQueryMisc
+                documentation.
             limit (int):
                 Number of objects to be returned.
             base_query (Query):
                 A base query to be used as initial filter.
 
         Returns:
-            Results of query.
+            Query:
+                SQLAlchemy Query object with the results.
         """
         # Set list and dicts in the fuction to no bug with pointers
         filter_dict = {} if filter_dict is None else filter_dict
@@ -171,28 +200,39 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
     @classmethod
     def default_query_get(cls, pk: str | int | dict,
                           base_query: Query = None,
-                          raise_error: bool = True) -> object:
+                          raise_error: bool = True,
+                          use_cache: bool = True) -> object:
         """Get model_class object using pumpwood pk.
 
-        Pumpwood pk may be integers and base64 strings coding a dictionary
-        with composite primary keys. This function abstract SQLAlchemy
-        query.get to treat both possibilities.
+        Pumpwood pk may be integers and base64 strings coding a
+        dictionary with composite primary keys. This function
+        abstracts SQLAlchemy query.get to treat both possibilities.
+
+        It also manages a local cache to avoid multiple database calls
+        during the same request.
 
         Args:
-            pk (str, int, dict):
-                Pumpwood primary key. If the pk is already a dictonary
-                it will be considered ready to be passed to the
-                query.
+            pk (str | int | dict):
+                Pumpwood primary key. If the pk is already a
+                dictionary it will be considered ready to be passed
+                to the query.
             base_query (Query):
                 A base query to be used as initial filter.
             raise_error (bool):
                 Raise error if object was not found.
             use_cache (bool):
-                If local cache may be used to retrieve data. Is base query
-                if not None, cache can not be used.
+                If local cache may be used to retrieve data. If base
+                query is not None, cache can not be used.
 
-        Return:
-            Returns a SQLAlchemy object with corresponding primary key.
+        Returns:
+            object:
+                A SQLAlchemy object with corresponding primary key.
+
+        Raises:
+            PumpWoodObjectDoesNotExist:
+                If object is not found and raise_error is True.
+            PumpWoodOtherException:
+                If query returns more than one object.
         """
         # Is is not possible to unify the implementation because the cache
         # for default query uses the base query filter and the query do not.
@@ -201,9 +241,10 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
             authorization_token=AuthFactory.get_auth_header()['Authorization'],
             model_class=cls.__name__, object_pk=pk,
             get_type='default')
-        cache_data = PumpwoodFlaskGCache.get(hash_dict=hash_dict)
-        if cache_data is not None:
-            return cache_data
+        if use_cache:
+            cache_data = PumpwoodFlaskGCache.get(hash_dict=hash_dict)
+            if cache_data is not None:
+                return cache_data
 
         converted_pk = None
         if isinstance(pk, dict):
@@ -221,12 +262,23 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
         # applied over a previous id
         model_object_results = cls.default_filter_query(query=base_query)\
             .filter_by(**converted_pk).all()
-        if len(model_object_results) == 0 and raise_error:
-            message = "Requested object {model_class}[{pk}] not found."
-            raise PumpWoodObjectDoesNotExist(
-                message=message, payload={
-                    "model_class": cls.__name__,
-                    "pk": _try_convert_int(pk)})
+        if len(model_object_results) == 0:
+            # If raise_error=True, it will raise PumpWoodObjectDoesNotExist
+            # indicating that the primary key was not found on database,
+            # raise_error=False will return a None object, this is usefull
+            # for upsert operations.
+            if raise_error:
+                message = "Requested object {model_class}[{pk}] not found."
+                raise PumpWoodObjectDoesNotExist(
+                    message=message, payload={
+                        "model_class": cls.__name__,
+                        "pk": _try_convert_int(pk)})
+            else:
+                return None
+
+        # If more than one object is returned, it indicates that the
+        # fields used to retrive the information can not be considered
+        # unique on database
         elif len(model_object_results) != 1:
             msg = (
                 "Get query for {model_class}[{pk}] returned more than "
@@ -239,8 +291,11 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
         # Get first element
         model_object = model_object_results[0]
 
-        # Set a local cache for object using g object
-        PumpwoodFlaskGCache.set(hash_dict=hash_dict, value=model_object)
+        # Is cache is not to be used, probably it is a bulk operation
+        # or an update on save, setting cache may renew old data
+        # on cache.
+        if use_cache:
+            PumpwoodFlaskGCache.set(hash_dict=hash_dict, value=model_object)
         return model_object
 
     @classmethod
@@ -252,21 +307,25 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
 
         Args:
             filter_dict (dict):
-                Dictionary to be used in filter operations.
-                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
+                Dictionary to be used in filter operations. See
+                pumpwood_miscellaneous.SqlalchemyQueryMisc
+                documentation.
             exclude_dict (dict):
-                Dictionary to be used in filter operations.
-                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
+                Dictionary to be used in filter operations. See
+                pumpwood_miscellaneous.SqlalchemyQueryMisc
+                documentation.
             order_by (list):
-                Dictionary to be used in filter operations.
-                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
+                List of fields to be used in order by operations.
+                See pumpwood_miscellaneous.SqlalchemyQueryMisc
+                documentation.
             limit (int):
                 Number of objects to be returned.
             base_query (Query):
                 A base query to be used as initial filter.
 
         Returns:
-            Results of query.
+            Query:
+                SQLAlchemy Query object with the results.
         """
         # Set list and dicts in the fuction to no bug with pointers
         filter_dict = {} if filter_dict is None else filter_dict
@@ -288,33 +347,44 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
 
     @classmethod
     def query_get(cls, pk: str | int | dict, base_query: Query = None,
-                  raise_error: bool = True) -> object:
+                  raise_error: bool = True, use_cache: bool = True) -> object:
         """Get model_class object using pumpwood pk without base query filter.
 
-        Pumpwood pk may be integers and base64 strings coding a dictionary
-        with composite primary keys. This function abstract SQLAlchemy
-        query.get to treat both possibilities.
+        Pumpwood pk may be integers and base64 strings coding a
+        dictionary with composite primary keys. This function
+        abstracts SQLAlchemy query.get to treat both possibilities.
 
         Args:
-            pk (str, int, dict):
-                Pumpwood primary key. If the pk is already a dictonary
-                it will be considered ready to be passed to the
-                query.
+            pk (str | int | dict):
+                Pumpwood primary key. If the pk is already a
+                dictionary it will be considered ready to be passed
+                to the query.
             base_query (Query):
                 A base query to be used as initial filter.
             raise_error (bool):
                 Raise error if object was not found.
+            use_cache (bool):
+                If cache can be used to retrieve the information
+                locally.
 
-        Return:
-            Returns a SQLAlchemy object with corresponding primary key.
+        Returns:
+            object:
+                A SQLAlchemy object with corresponding primary key.
+
+        Raises:
+            PumpWoodObjectDoesNotExist:
+                If object is not found and raise_error is True.
+            PumpWoodOtherException:
+                If query returns more than one object.
         """
         hash_dict = FlaskPumpWoodBaseModelCacheHash(
             authorization_token=AuthFactory.get_auth_header()['Authorization'],
             model_class=cls.__name__, object_pk=pk,
             get_type='query')
-        cache_data = PumpwoodFlaskGCache.get(hash_dict=hash_dict)
-        if cache_data is not None:
-            return cache_data
+        if use_cache:
+            cache_data = PumpwoodFlaskGCache.get(hash_dict=hash_dict)
+            if cache_data is not None:
+                return cache_data
 
         converted_pk = None
         if isinstance(pk, dict):
@@ -351,6 +421,10 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
                     "pk": _try_convert_int(pk)})
         model_object = model_object_results[0]
 
-        # Set a local cache for object using g object
-        PumpwoodFlaskGCache.set(hash_dict=hash_dict, value=model_object)
+        # Is cache is not to be used, probably it is a bulk operation
+        # or an update on save, setting cache may renew old data
+        # on cache.
+        if use_cache:
+            # Set a local cache for object using g object
+            PumpwoodFlaskGCache.set(hash_dict=hash_dict, value=model_object)
         return model_object

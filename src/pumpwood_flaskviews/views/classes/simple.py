@@ -7,6 +7,7 @@ import inspect
 import datetime
 import simplejson as json
 from typing import Any, Union, List, Literal
+from loguru import logger
 from flask.views import View
 from flask import request, Response
 from flask import jsonify, send_file
@@ -17,6 +18,7 @@ from pumpwood_communication import exceptions
 from pumpwood_communication.microservices import PumpWoodMicroService
 from pumpwood_communication.cache import default_cache
 from pumpwood_flaskviews.sqlalchemy import get_session
+from pumpwood_flaskviews.exceptions import PumpWoodFlaskViewEndPointFoundError
 
 # Flask view
 from pumpwood_flaskviews.views.classes.aux import AuxFillOptions
@@ -29,17 +31,17 @@ from pumpwood_i8n.singletons import pumpwood_i8n as _
 
 
 class PumpWoodFlaskView(View):
-    """PumpWoodFlaskView base view for pumpwood like models.
+    """Base view for PumpWood-like models.
 
-    A helper to build views that can be consumed using pumpwood
-    microsservice.
+    A helper class used to build views that are compatible with the
+    PumpWood microservice ecosystem.
     """
 
     methods = ['GET', 'POST', 'DELETE', 'PUT']
     """Methods allowed on flask view."""
 
     CHUNK_SIZE: int = 4096
-    """File upload/download chuck size."""
+    """File upload/download chunk size."""
 
     _view_type = "simple"
     """Type of the view, this will be used to mark route type on route
@@ -84,11 +86,11 @@ class PumpWoodFlaskView(View):
 
     # Query information
     table_partition: list[str] = []
-    """Some large table are partitioned using one or more columns. Fetching
-       without setting this columns on filters may lead to reduced performance,
-       or even query hanging without finishing. If this variable is set it will
-       not allow flat_list_by_chunks queries on PumpwoodCommunication without
-       setting at least the first partition as equal or in filter."""
+    """Specifies the table partitions applied to the database.
+
+    Fetching data without applying these columns as filters may lead to
+    severely reduced performance or query timeouts.
+    """
     list_paginate_limit: int = 50
     """Front-end uses 50 as limit to check if all data have been fetched,
        if change this parameter, be sure to update front-end list component."""
@@ -124,17 +126,18 @@ class PumpWoodFlaskView(View):
 
     @classmethod
     def _add_default_filter(cls, query: Query = None):
-        """Add class default filters to query.
+        """Add class default filters to a SQLAlchemy query.
 
-        This function will use base_query object to add default filters
-        at query results, it can be used to retrict access to data using
-        row_permission or object ownership.
+        Uses the base query object of the model to apply mandatory
+        filters, such as row-level permissions or ownership restrictions.
 
-        It is possible to implement custom filter using BaseQueryABC as
-        Inheritance.
+        Args:
+            query (Query):
+                The initial SQLAlchemy query.
 
         Returns:
-            Return a sqlalchemy query with applied default filters.
+            Query:
+                The query with applied default filters.
         """
         return cls.model_class.default_filter_query(query=query)
 
@@ -162,26 +165,26 @@ class PumpWoodFlaskView(View):
         return cls._primary_keys
 
     def check_microservices(self, microservice: str) -> bool:
-        """Check if microservice is avaiable.
+        """Check if a microservice is available in the current environment.
 
         Args:
             microservice (str):
-                Name of the microservice to check if is
-                avaiable on Kong services.
+                Name of the microservice to check on Kong services.
 
-        Return:
-            True if microservice is avaiable o kong services.
+        Returns:
+            bool:
+                True if the microservice is registered on Kong.
         """
         list_microservices = self.get_available_microservices()
         return microservice in list_microservices
 
     def get_available_microservices(self) -> List[str]:
-        """Get avaiable microservices.
+        """Get a list of all available microservices.
 
-        Args:
-            No args.
-        Kwargs:
-            No kwargs.
+        Returns:
+            List[str]:
+                A list containing the names of all registered
+                microservices.
         """
         hash_dict = {
             "context": "pumpwood_flaskviews",
@@ -199,10 +202,11 @@ class PumpWoodFlaskView(View):
             return available_microservices
 
     def get_session(self):
-        """Ping connection before using database.
+        """Ping the database connection and restore the session if needed.
 
-        Ping connection before quering database and restore session if
-        necessary.
+        Returns:
+            Session:
+                A valid SQLAlchemy session.
         """
         return get_session(db=self.db)
 
@@ -210,41 +214,48 @@ class PumpWoodFlaskView(View):
     def pumpwood_pk_get(cls, pk: Union[str, int]) -> object:
         """Get model_class object using pumpwood pk.
 
-        Pumpwood pk may be integers and base64 strings coding a dictionary
-        with composite primary keys. This function abstract SQLAlchemy
-        query.get to treat both possibilities.
+        .. warning::
+            This method is deprecated. Use `model_class.default_query_get`
+            instead.
+
+        Pumpwood primary keys may be integers or base64 strings encoding
+        a dictionary for composite primary keys.
 
         Args:
-            pk (str, int):
-                Pumpwood primary key.
+            pk (str | int):
+                The Pumpwood primary key.
 
-        Return:
-            Returns a SQLAlchemy object with corresponding primary key.
+        Returns:
+            object:
+                A SQLAlchemy object corresponding to the primary key.
         """
-        # Use base query to filter object acording to user's permission
-        tmp_base_query = cls.model_class.base_query\
-            .add_filter(model=cls.model_class)
+        msg = (
+            "Use of 'pumpwood_pk_get' method is deprected, use "
+            "model_class.default_query_get instead.")
+        logger.warning(msg)
 
-        # Since base query inject a filter retricting user information
-        # it is not possible to use .get
-        model_object = cls.model_class.default_query_get(
-            pk=pk, base_query=tmp_base_query)
+        model_object = cls.model_class.default_query_get(pk=pk)
         return model_object
 
     @classmethod
     def create_route_object(cls, service_object: dict) -> dict:
-        """Build Route object from view information.
+        """Build and register a Route object at the authorization service.
 
-        Creates a route object on admin microservice, which will register a
-        route in Kong using service created by service_object.
+        Creates a KongRoute entry which registers the view's URL patterns
+        in Kong, enabling access through the microservice gateway.
 
         Args:
-            service_object (dict:KongService):
-                A serialized KongService object
-                on which will be registred the new route.
+            service_object (dict):
+                A serialized KongService object which will host the
+                new route.
 
         Returns:
-            Returns a serialized object of KongRoute.
+            dict:
+                The serialized KongRoute object returned by the server.
+
+        Raises:
+            PumpWoodOtherException:
+                If registration fails at the microservice level.
         """
         if service_object is not None:
             cls.microservice.login()
@@ -309,8 +320,60 @@ class PumpWoodFlaskView(View):
                          allowed_extensions=str(allowed_extensions))]
         return []
 
-    def dispatch_request(self, end_point, first_arg=None, second_arg=None):
-        """Dispatch request acordint o end_point, first_arg and second_arg."""
+    @staticmethod
+    def _get_request_payload(request):
+        """Get request payload treting both the JSON and form-data.
+
+        Args:
+            request:
+                Flaks standard request object.
+
+        Raises:
+            PumpWoodWrongParameters:
+                If information on __json__ can not be loaded.
+        """
+        if request.method.lower() not in ('post', 'put'):
+            return None
+
+        if request.mimetype == 'application/json':
+            data = request.get_json()
+        else:
+            data = request.form.to_dict()
+            json_data_str = data.pop("__json__", '{}')
+            try:
+                json_data = json.loads(json_data_str)
+            except Exception:
+                msg = (
+                    "'__json__' key is present at object data, but it " +
+                    "was not possible to load its content.")
+                raise exceptions.PumpWoodWrongParameters(
+                    message=msg, payload={"__json__": json_data_str})
+            data.update(json_data)
+        return data
+
+    def dispatch_request(self, end_point: str, first_arg: str = None,
+                         second_arg: str = None) -> Response:
+        """Dispatch the request according to the endpoint and arguments.
+
+        Handles authentication checks, payload extraction, and routes
+        the execution to the specific CRUD, action, or option method.
+
+        Args:
+            end_point (str):
+                The endpoint identifier (e.g., 'list', 'retrieve').
+            first_arg (str):
+                The first argument from the URL (often the PK).
+            second_arg (str):
+                The second argument (often an action name).
+
+        Returns:
+            Response:
+                A standard Flask Response or jsonify output.
+
+        Raises:
+            PumpWoodException:
+                If the endpoint or method combination is not implemented.
+        """
         # Ping the database and rollback session if necessary
         self.get_session()
 
@@ -322,22 +385,7 @@ class PumpWoodFlaskView(View):
             payload_text=request.get_data()[:300])
 
         # Extract data for post requests
-        data = None
-        if request.method.lower() in ('post', 'put'):
-            if request.mimetype == 'application/json':
-                data = request.get_json()
-            else:
-                data = request.form.to_dict()
-                json_data_str = data.pop("__json__", '{}')
-                try:
-                    json_data = json.loads(json_data_str)
-                except Exception:
-                    msg = (
-                        "'__json__' key is present at object data, but it " +
-                        "was not possible to load its content.")
-                    raise exceptions.PumpWoodWrongParameters(
-                        message=msg, payload={"__json__": json_data_str})
-                data.update(json_data)
+        data = self._get_request_payload(request=request)
 
         # List end-points
         if end_point == 'list' and request.method.lower() == 'post':
@@ -369,6 +417,8 @@ class PumpWoodFlaskView(View):
                         request.args.get('related_fields', 'false'))
                     default_fields = json.loads(
                         request.args.get('default_fields', 'false'))
+                    use_cache = json.loads(
+                        request.args.get('use_cache', 'false'))
                 except Exception:
                     msg = (
                         "Error when deserializing url query parameters, "
@@ -382,7 +432,8 @@ class PumpWoodFlaskView(View):
                     pk=first_arg, fields=fields,
                     foreign_key_fields=foreign_key_fields,
                     related_fields=related_fields,
-                    default_fields=default_fields))
+                    default_fields=default_fields,
+                    use_cache=use_cache))
 
         if end_point == 'retrieve-file':
             if request.method.lower() == 'get':
@@ -429,11 +480,14 @@ class PumpWoodFlaskView(View):
                 request.args.get('related_fields', 'false'))
             default_fields = json.loads(
                 request.args.get('default_fields', 'false'))
+            upsert = json.loads(
+                request.args.get('upsert', 'false'))
             save_data = self.save(
                 data=data, fields=fields,
                 foreign_key_fields=foreign_key_fields,
                 related_fields=related_fields,
-                default_fields=default_fields)
+                default_fields=default_fields,
+                upsert=upsert)
             return jsonify(save_data)
 
         if end_point == "save-file-streaming" and \
@@ -542,9 +596,12 @@ class PumpWoodFlaskView(View):
                 endpoint_dict = data or {}
                 return jsonify(self.aggregate(**endpoint_dict))
 
-        raise exceptions.PumpWoodException(
-            'End-point %s for method %s not implemented' % (
-                end_point, request.method))
+        raise PumpWoodFlaskViewEndPointFoundError(
+            message=(
+                'End-point {end_point} for method {method} not implemented'),
+            payload={
+                'end_point': end_point,
+                'method': request.method})
 
     @classmethod
     def as_view(cls, *class_args, **class_kwargs):
@@ -552,37 +609,36 @@ class PumpWoodFlaskView(View):
         return super(PumpWoodFlaskView, cls).as_view(
             name=cls.model_class.__name__, *class_args, **class_kwargs)
 
-    def list(self, filter_dict: None | dict = None, exclude_dict: dict = None,
-             order_by: list = None, fields: list = None,
-             limit: int = None, default_fields: bool = False,
+    def list(self, filter_dict: None | dict = None,
+             exclude_dict: dict = None, order_by: list = None,
+             fields: list = None, limit: int = None,
+             default_fields: bool = False,
              foreign_key_fields: bool = False, **kwargs) -> list:
-        """Return query result pagination.
+        """Return a paginated list of serialized objects.
 
         Args:
             filter_dict (dict):
-                Dictionary to be used in filter operations.
-                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
+                Dictionary for filtering operations.
             exclude_dict (dict):
-                Dictionary to be used in filter operations.
-                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
+                Dictionary for exclusion operations.
             order_by (list):
-                Dictionary to be used in filter operations.
-                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
+                List of fields to order the results by.
             fields (list):
-                Fields to be returned.
+                Specific fields to be returned in the response.
             limit (int):
-                Number of objects to be returned.
+                Maximum number of objects to return.
             default_fields (bool):
-                Return the fields specified at self.list_fields.
+                If True, returns only the default fields defined for
+                the list view.
             foreign_key_fields (bool):
-                If foreign_key fields should be returned. This might take
-                some time...
+                If True, expands foreign key fields into full objects.
             **kwargs:
-                Compatibylity and super the function.
+                For compatibility and extensibility.
 
         Returns:
-            Return a list of serialized objects using self.serializer and
-            filtered by args.
+            list:
+                A list of serialized dictionaries representing the
+                matching objects.
         """
         # Set list and dicts in the fuction to no bug with pointers
         filter_dict = {} if filter_dict is None else filter_dict
@@ -598,39 +654,33 @@ class PumpWoodFlaskView(View):
             many=True, fields=fields, default_fields=default_fields,
             foreign_key_fields=foreign_key_fields,
             related_fields=False)
-        return list_serializer.dump(query_result, many=True)
+        return list_serializer.dump(query_result)
 
     def list_without_pag(self, filter_dict: None | dict = None,
                          exclude_dict: dict = None, order_by: list = None,
                          fields: list = None, default_fields: bool = False,
                          foreign_key_fields: bool = False, **kwargs) -> list:
-        """Return query without pagination.
+        """Return all matching objects without pagination.
 
         Args:
-            No args.
-        Kargs:
             filter_dict (dict):
-                Dictionary to be used in filter operations.
-                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
+                Dictionary for filtering operations.
             exclude_dict (dict):
-                Dictionary to be used in filter operations.
-                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
+                Dictionary for exclusion operations.
             order_by (list):
-                Dictionary to be used in filter operations.
-                See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
+                List of fields to order the results by.
             fields (list):
-                Fields to be returned.
+                Specific fields to be returned.
             default_fields (bool):
-                Return the fields specified at self.list_fields.
+                If True, returns the default fields for the list view.
             foreign_key_fields (bool):
-                If foreign_key fields should be returned. This might take
-                some time...
+                If True, expands foreign keys.
             **kwargs:
-                Compatibylity with other versions and extension of class.
+                For compatibility and extensibility.
 
-        Return:
-            Return a list of serialized objects using self.serializer and
-            filtered by args without pagination all values.
+        Returns:
+            list:
+                A list of all matching serialized objects.
         """
         # Set list and dicts in the fuction to no bug with pointers
         filter_dict = {} if filter_dict is None else filter_dict
@@ -645,49 +695,60 @@ class PumpWoodFlaskView(View):
             many=True, fields=fields, default_fields=default_fields,
             foreign_key_fields=foreign_key_fields,
             related_fields=False)
-        return list_serializer.dump(query_result, many=True)
+        return list_serializer.dump(query_result)
 
     def retrieve(self, pk: Any, fields: list = None,
                  foreign_key_fields: bool = False,
                  related_fields: bool = False,
-                 default_fields: bool = False) -> dict:
-        """Retrieve object with pk.
+                 default_fields: bool = False,
+                 use_cache: bool = False) -> dict:
+        """Retrieve a single object by its primary key.
 
         Args:
-            pk (int | str):
-                Primary key of the object to be returned.
+            pk (int | str | dict):
+                The primary key identifier (integer, base64 dict, or dict).
             fields (list):
-                Fields to be returned.
-            default_fields (bool):
-                Return the fields specified at self.list_fields.
+                Specific fields to be returned in the response.
             foreign_key_fields (bool):
-                If foreign_key fields should be returned. This might take
-                some time...
+                If True, expands foreign key fields into full objects.
             related_fields (bool):
-                If related fields (M2M) should be returned. This might take
-                some time...
+                If True, expands related (M2M) fields.
+            default_fields (bool):
+                If True, returns the default fields for the view.
+            use_cache (bool):
+                If True, allows reading from the request-scoped cache.
 
-        Return:
-            A dictionary with the serialized values of the object.
+        Returns:
+            dict:
+                The serialized dictionary representing the object.
         """
-        model_object = self.model_class.default_query_get(pk=pk)
+        model_object = self.model_class.default_query_get(
+            pk=pk, use_cache=use_cache)
         retrieve_serializer = self.serializer(
             many=False, fields=fields, default_fields=default_fields,
             foreign_key_fields=foreign_key_fields,
             related_fields=related_fields)
         return retrieve_serializer.dump(model_object)
 
-    def retrieve_file(self, pk: int | str, file_field: str):
-        """Read file without stream.
+    def retrieve_file(self, pk: int | str, file_field: str) -> dict:
+        """Read a file associated with a model field as a single byte block.
 
         Args:
             pk (int | str):
-                Pk of the object to save file field.
+                Primary key of the object containing the file field.
             file_field (str):
-                File field to receive stream file.
+                The name of the field that stores the file path.
 
         Returns:
-            A stream of bytes with da file.
+            dict:
+                A dictionary containing 'data' (bytes), 'content_type',
+                and 'file_name'.
+
+        Raises:
+            PumpWoodForbidden:
+                If storage is not configured or field is not allowed.
+            PumpWoodObjectDoesNotExist:
+                If the object or the file itself is missing in storage.
         """
         temp_model_class = self.model_class.__mapper__.class_.__name__
         if self.storage_object is None:
@@ -746,16 +807,17 @@ class PumpWoodFlaskView(View):
         return file_data
 
     def retrieve_file_streaming(self, pk: int | str, file_field: str):
-        """Read file using stream.
+        """Read a file associated with a model field using a stream iterator.
 
         Args:
             pk (int | str):
-                Pk of the object to save file field.
-            file_field(str):
-                File field to receive stream file.
+                Primary key of the object containing the file field.
+            file_field (str):
+                The name of the field that stores the file path.
 
         Returns:
-            A stream of bytes with da file.
+            iterator:
+                A stream of bytes from the storage object.
         """
         if self.storage_object is None:
             raise exceptions.PumpWoodForbidden(
@@ -812,7 +874,7 @@ class PumpWoodFlaskView(View):
                 "file_field must be set on self.file_fields dictionary.")
 
         session = self.get_session()
-        obj = self.pumpwood_pk_get(pk=pk)
+        obj = self.model_class.default_query_get(pk=pk)
         file_path = file_path = getattr(obj, file_field)
         if file_path is None:
             raise exceptions.PumpWoodObjectDoesNotExist(
@@ -836,25 +898,25 @@ class PumpWoodFlaskView(View):
         return retrieve_serializer.dump(empty_object)
 
     def delete(self, pk: int | str, force_delete: bool = False) -> dict:
-        """Delete object.
+        """Delete an object by its primary key.
 
-        If object have deleted as field, this function will not delete
-        the object and will set the field to True.
-
-        Setting force_delete to True will disable this feature and delete the
-        object even with deleted field.
+        Supports soft-deletion if the model has a 'deleted' column.
+        If 'force_delete' is False and the column exists, it sets
+        'deleted' to True instead of removing the row.
 
         Args:
             pk (int | str):
-                Pk of the object to be deleted.
+                The primary key of the object to be deleted.
             force_delete (bool):
-                If True force delete of the object even if object has deleted
-                as field.
-        Return [dict]:
-            Return the excluded object.
+                If True, bypasses soft-delete logic and removes the
+                record from the database.
+
+        Returns:
+            dict:
+                The serialized representation of the deleted object.
         """
         session = self.get_session()
-        model_object = self.pumpwood_pk_get(pk=pk)
+        model_object = self.model_class.default_query_get(pk=pk)
         temp_serializer = self.serializer(many=False)
         object_dump = temp_serializer.dump(model_object, many=False)
 
@@ -886,18 +948,19 @@ class PumpWoodFlaskView(View):
                     "action_name": None})
         return object_dump
 
-    def delete_many(self, filter_dict: dict = {},
-                    exclude_dict: dict = {}) -> bool:
-        """Delete many objects using query dictionaries as filter.
+    def delete_many(self, filter_dict: dict = None,
+                    exclude_dict: dict = None) -> bool:
+        """Delete multiple objects matching the filter criteria.
 
         Args:
             filter_dict (dict):
-                Filter objects that will be deleted.
+                Filters identifying objects to be deleted.
             exclude_dict (dict):
-                Exclude objects that will be deleted.
+                Filters identifying objects to be spared.
 
         Returns:
-            Return True.
+            bool:
+                Always returns True if the operation succeeds.
         """
         session = self.get_session()
         try:
@@ -918,30 +981,42 @@ class PumpWoodFlaskView(View):
             raise e
         return True
 
-    def save(self, data: dict, file_paths: dict = {},
+    def save(self, data: dict, file_paths: dict = None,
              foreign_key_fields: bool = False, related_fields: bool = False,
-             default_fields: bool = False, fields: list = None) -> dict:
-        """Update object or save new object.
+             default_fields: bool = False, fields: list = None,
+             upsert: bool = False) -> dict:
+        """Update an existing object or save a new one.
+
+        Handles complex serialization, file uploads, and optional upsert
+        behavior.
 
         Args:
             data (dict):
-                Data used to save information on Pumpwood.
+                The object data payload.
             file_paths (dict):
-                Used when saving files with streaming, it is not
-                exposed to save API. If will set the file path directly on
-                the object.
-            fields (list):
-                Set fields to be returned at serializer.
+                Internal parameter for direct file path assignment.
             foreign_key_fields (bool):
-                If foreign fields should be returned at the object serializer.
+                If True, includes expanded FKs in the response.
             related_fields (bool):
-                If related fields should be returned at the object serializer.
+                If True, includes expanded related fields.
             default_fields (bool):
-                If default fields should be returned at the object serializer.
+                If True, uses default list fields for serialization.
+            fields (list):
+                Limits the returned object to specific fields.
+            upsert (bool):
+                If True, creates a new record if the PK is not found.
 
         Returns:
-            Returns a dictonary with serialized object.
+            dict:
+                The serialized representation of the saved object.
+
+        Raises:
+            PumpWoodObjectSavingException:
+                If validation fails or file uploads encounter errors.
         """
+        # Fill default values if not provided
+        file_paths = {} if file_paths is None else file_paths
+
         retrieve_serializer = self.serializer(
             many=False, fields=fields, default_fields=default_fields,
             foreign_key_fields=foreign_key_fields,
@@ -966,7 +1041,14 @@ class PumpWoodFlaskView(View):
         model_object = None
         # Retrieve object if pk is set
         if pk is not None:
-            model_object = self.pumpwood_pk_get(pk=pk)
+            # If it is an upsert operation and the object is not found,
+            # it will not raise not found error and return an empty
+            # object
+            print("pk:", pk)
+            print("upsert:", upsert)
+            model_object = self.model_class.default_query_get(
+                pk=pk, raise_error=not upsert)
+
         to_save_obj = retrieve_serializer.load(
             data, instance=model_object, session=session)
         try:
@@ -1117,31 +1199,28 @@ class PumpWoodFlaskView(View):
         return result
 
     def save_file_streaming(self, pk: int | str, file_field: str,
-                            file_name: str = None,
-                            foreign_key_fields: bool = False,
-                            related_fields: bool = False,
-                            default_fields: bool = False,
-                            fields: list = None) -> dict:
-        """Save file to object.
+                            file_name: str = None, **kwargs) -> dict:
+        """Save a file to an object using streamed data.
 
         Args:
             pk (int | str):
-                Pk of the object to be updated.
+                The primary key of the object to be updated.
             file_field (str):
-                Name of the file field in the object.
+                The field name in the model that stores the file path.
             file_name (str):
-                File name that will be set for file streaming.
+                The filename to be assigned (sanitized).
             fields (list):
-                Set fields to be returned at serializer.
+                Specific fields to be returned in the resulting object.
             foreign_key_fields (bool):
-                If foreign fields should be returned at the object serializer.
+                If True, expands foreign keys in the response.
             related_fields (bool):
-                If related fields should be returned at the object serializer.
+                If True, expands related fields.
             default_fields (bool):
-                If default fields should be returned at the object serializer.
+                If True, returns only the default fields.
 
         Returns:
-            Serialized object.
+            dict:
+                The response from the storage provider after upload.
         """
         if file_field not in self.file_fields.keys():
             raise exceptions.PumpWoodForbidden(
@@ -1224,8 +1303,26 @@ class PumpWoodFlaskView(View):
             for name, action in actions.items()]
         return action_descriptions
 
-    def execute_action(self, action_name, pk=None, parameters={}):
-        """Execute action over object or class using parameters."""
+    def execute_action(self, action_name: str, pk: Any = None,
+                       parameters: dict = None) -> dict:
+        """Execute a decorated action on the model or instance.
+
+        Actions can be static or instance-based. This method handles
+        object retrieval, parameter validation, and execution.
+
+        Args:
+            action_name (str):
+                The name of the action to execute.
+            pk (Any):
+                The primary key (required if action is instance-based).
+            parameters (dict):
+                A dictionary of parameters passed to the action function.
+
+        Returns:
+            dict:
+                A dictionary containing 'result', 'action', 'parameters',
+                and the serialized 'object' state.
+        """
         actions = self.get_actions()
         rest_action_names = list(actions.keys())
 
@@ -1256,7 +1353,7 @@ class PumpWoodFlaskView(View):
                 raise exceptions.PumpWoodActionArgsException(
                     "Function is static and pk is not Null")
 
-            model_object = self.pumpwood_pk_get(pk=pk)
+            model_object = self.model_class.default_query_get(pk=pk)
 
             # Retrieve function associated with action to inject the object as
             # self parameter
@@ -1286,33 +1383,34 @@ class PumpWoodFlaskView(View):
             'parameters': parameters, 'object': object_dict}
 
     def aggregate(self, group_by: List[str], agg: dict,
-                  filter_dict: dict = {}, exclude_dict: dict = {},
-                  order_by: List[str] = [], limit: int = None,
-                  format: str = 'list', **kwargs):
-        """Aggregate database information using group_by.
+                  filter_dict: dict = None, exclude_dict: dict = None,
+                  order_by: List[str] = None, limit: int = None,
+                  format: str = 'list', **kwargs) -> Union[dict, list]:
+        """Aggregate database information using group_by and functions.
 
         Args:
-            group_by (list[str]):
-                Columns that will be used at group by clause.
+            group_by (List[str]):
+                Columns used in the GROUP BY clause.
             agg (dict):
-                Aggregation dictonary, each item will be converted on
-                an aggregation function. The key will be the return column,
-                field the field over which the aggregation function will
-                be calculated.
+                Aggregation dictionary mapping return keys to fields and
+                functions (e.g., {'total': {'field': 'amount', 'func':
+                'sum'}}).
             filter_dict (dict):
-                Filter dictonary to be applied before aggregation.
+                Filters to apply before aggregation.
             exclude_dict (dict):
-                Exclude dictionary to be applied before aggregation.
-            order_by (list[str]):
-                Order by to order results from aggregation. Aggregation
-                results (agg dictonary keys) can also be used when ordering.
+                Exclusions to apply before aggregation.
+            order_by (List[str]):
+                Ordering for the aggregated results.
             limit (int):
-                Limit values return by the query.
+                Maximum number of results to return.
             format (str):
-                Format to be used in pivot, same argument used in
-                pandas to_dict.
+                Pandas dictionary format (e.g., 'list', 'records').
             **kwargs:
-                Extra arguments not mapped yet.
+                Extra arguments.
+
+        Returns:
+            Union[dict, list]:
+                The aggregated data in the requested format.
         """
         session = self.get_session()
 
@@ -1364,17 +1462,13 @@ class PumpWoodFlaskView(View):
         return self.cls_fields_options()
 
     def list_view_options(self) -> dict:
-        """Return information to render list views on frontend.
+        """Return information required to render list views on front-ends.
 
-        Args:
-            No args.
-
-        Return:
-            Return a dictionary with keys:
-            - list_fields[List[str]]: Return a list of fields that should be
-                redendered on list view.
-            - field_type [dict]: Return information for each column to
-                render search filters on frontend.
+        Returns:
+            dict:
+                A dictionary containing:
+                - default_list_fields (List[str]): Fields to render.
+                - field_descriptions (dict): Column metadata and filters.
         """
         list_fields = self.get_list_fields()
         fields_options = self.cls_fields_options()
@@ -1383,30 +1477,16 @@ class PumpWoodFlaskView(View):
             "field_descriptions": fields_options}
 
     def retrieve_view_options(self) -> dict:
-        """Return information to correctly create retrieve view.
+        """Return information required to render retrieve views on front-ends.
 
-        Field set are set using gui_retrieve_fieldset attribute of the
-        class. It is used classes to define each fieldset.
+        Uses the `gui_retrieve_fieldset` attribute to define layout
+        tabs and field groupings.
 
-        Args:
-            No Args.
-        Return [dict]:
-            Return a dictonary with information to render retrieve
-            views on front-ends. Keys:
-             - fieldset [dict]: A dictionary with inline tabs names as
-                key and fields that will be redendered.
-
-            Exemple:
-            {
-                "fieldset": {
-                    "Nome da tab. 1": {
-                        "fields": ["field1", "field2", "field3"]
-                    },
-                    "Nome da tab. 2": {
-                        "fields": ["field1"]
-                    }
-                }
-            }
+        Returns:
+            dict:
+                A dictionary containing:
+                - verbose_field (str): Display name for the object.
+                - fieldset (dict): Tab definitions and field groupings.
         """
         gui_retrieve_fieldset = self.get_gui_retrieve_fieldset()
         gui_verbose_field = self.get_gui_verbose_field()
@@ -1433,23 +1513,21 @@ class PumpWoodFlaskView(View):
     def fill_options_validation(self, partial_data: dict,
                                 user_type: str = 'api',
                                 field: str = None) -> dict:
-        """Return fill options for retrieve/save pages.
-
-        It will validate partial data fill and return erros if necessary.
+        """Return fill options with validation for retrieve/save pages.
 
         Args:
             partial_data (dict):
-                Partially filled data to be validated by the backend.
+                Partial object data to be validated.
             user_type (str):
-                Must be in ['api', 'gui']. It will return the
-                options according to interface user is using. When requesting
-                using gui, self.gui_readonly field will be setted as read-only.
+                Interface type ('api' or 'gui'). 'gui' enforces
+                read-only constraints on specific fields.
             field (str):
-                Set to validade an specific field. If not set all
-                fields will be validated.
+                Optional specific field to validate.
 
         Returns:
-            Return a dictionary.
+            dict:
+                A dictionary containing field descriptions and read-only
+                constraints.
         """
         fill_options = self.cls_fields_options(user_type=user_type)
         serializer_obj = self.serializer()

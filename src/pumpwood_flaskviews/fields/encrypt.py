@@ -12,20 +12,47 @@ encrypt_obj = PumpwoodCryptography()
 
 
 class EncryptedField(fields.Field):
-    """Field to store encrypted values on database.
+    """Field used to store encrypted values in the database.
 
-    It will user pumpwood_communication PumpwoodCryptography to encrypt
-    information. It is necessary to set
-    `PUMPWOOD_COMUNICATION__CRYPTO_FERNET_KEY` enviroment variable or an
-    error will be raised on serialization.
+    Utilizes the `PumpwoodCryptography` class from the
+    `pumpwood_communication` package for data encryption. The
+    `PUMPWOOD_COMMUNICATION__CRYPTO_FERNET_KEY` environment variable
+    must be set, otherwise encryption operations will raise an error.
     """
 
     def _serialize(self, value, attr, obj):
-        """Convert object to dictionary (JSON)."""
+        """Convert the internal model value for output.
+
+        Args:
+            value (Any):
+                The value to serialize.
+            attr (str):
+                The attribute name.
+            obj (object):
+                The object being serialized.
+
+        Returns:
+            Any:
+                The unmodified value (as it's already encrypted or null).
+        """
         return value
 
     def deserialize(self, value, attr, data):
-        """Convert dictionary to object."""
+        """Standardize the incoming value and encrypt it if necessary.
+
+        Args:
+            value (Any):
+                The value to deserialize.
+            attr (str):
+                The attribute name.
+            data (dict):
+                The full payload being deserialized.
+
+        Returns:
+            Any:
+                The encrypted value, or the existing value if it is already
+                encrypted and fixed.
+        """
         overwrited_data = _get_overwrite_audit(
             field=self, data=data, current_user=None,
             raise_not_superuser=False)

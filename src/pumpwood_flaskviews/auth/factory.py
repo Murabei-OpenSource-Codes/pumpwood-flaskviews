@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Classes and function for authetication and permission."""
+"""Classes and functions for authentication and permission."""
 import copy
 import time
 import requests
@@ -18,29 +18,15 @@ AUTH_CHECK_URL = urllib.parse.urljoin(
 
 
 class AuthFactory:
-    """Create an auth decorator using the server_url provided.
+    """Factory to handle authentication and authorization checks.
 
-    Args:
-        server_url (str): Full path to auth server url, including conection
-                          method and port (https://www.auth_server.com:5521/)
-    Kwargs:
-        No extra arguments
-
-    Returns:
-        func: Decorator to validate token auth.
-
-    Raises:
-        PumpWoodUnauthorized (Token autorization failed)
-            If is not possible to validate token.
+    Provides utility methods to validate tokens, retrieve authenticated
+    user data, and check row-level permissions through the
+    authorization microservice.
 
     Example:
-        >>> pumpwood_auth = auth_factory(
-                server_url='https://www.auth-server.com:80/')
-        >>>
-        >>> @pumpwood_auth
-        >>> def view_function():
-        >>>     ....
-
+        >>> AuthFactory.set_as_dummy()
+        >>> AuthFactory.check_authorization()
     """
     server_url = MICROSERVICE_URL
     auth_check_url = AUTH_CHECK_URL
@@ -50,7 +36,20 @@ class AuthFactory:
 
     @classmethod
     def _get_authenticated_user(cls, auth_header: dict) -> dict:
-        """Request authenticated user from Auth App."""
+        """Request authenticated user data from the Auth microservice.
+
+        Args:
+            auth_header (dict):
+                HTTP headers containing the Authorization token.
+
+        Returns:
+            dict:
+                The user data returned by the authentication service.
+
+        Raises:
+            PumpWoodUnauthorized:
+                If the token authorization fails after retries.
+        """
         url = urllib.parse.urljoin(
             AuthFactory.server_url,
             '/rest/registration/retrieveauthenticateduser/')
@@ -73,7 +72,20 @@ class AuthFactory:
 
     @classmethod
     def _get_user_all_row_permisson(cls, auth_header: dict) -> dict:
-        """Request all row permissions associated with user."""
+        """Request all row permissions associated with the user.
+
+        Args:
+            auth_header (dict):
+                HTTP headers containing the Authorization token.
+
+        Returns:
+            dict:
+                A list of row permission objects assigned to the user.
+
+        Raises:
+            PumpWoodException:
+                If the service fails to return the permissions.
+        """
         url = urllib.parse.urljoin(
             AuthFactory.server_url,
             '/rest/userprofile/actions/self_row_permissions/')
@@ -98,14 +110,19 @@ class AuthFactory:
 
     @classmethod
     def set_server_url(cls, server_url: str = None):
-        """Set server url after inicialization."""
+        """Set the authorization server URL.
+
+        .. warning::
+            This method is deprecated. Use the `MICROSERVICE_URL`
+            environment variable instead.
+        """
         logger.warning(
             "Use of set_server_url at app startup is deprected, instead use "
             "`MICROSERVICE_URL` env variable")
 
     @classmethod
     def set_as_dummy(cls):
-        """Set server url after inicialization."""
+        """Enable dummy authentication for testing purposes."""
         cls.dummy_auth = True
 
     @classmethod
@@ -133,7 +150,28 @@ class AuthFactory:
                                     end_point: str = None,
                                     first_arg: str = None,
                                     second_arg: str = None) -> dict:
-        """Build a dictonary to be used as hash dict for diskcache."""
+        """Build a dictionary to be used for authorization caching.
+
+        Args:
+            token (str):
+                The authorization token.
+            ingress_request (str):
+                The ingress request identifier.
+            request_method (str):
+                The HTTP method of the request.
+            path (str):
+                The request path.
+            end_point (str):
+                The specific endpoint being accessed.
+            first_arg (str):
+                The first argument of the endpoint.
+            second_arg (str):
+                The second argument of the endpoint.
+
+        Returns:
+            dict:
+                The dictionary used for cache hashing.
+        """
         return {
             'context': 'authorization',
             'token': token,
@@ -147,16 +185,31 @@ class AuthFactory:
     @classmethod
     def check_authorization(cls, request_method: str = None, path: str = None,
                             end_point: str = None, first_arg: str = None,
-                            second_arg: str = None, payload_text: str = None):
-        """Check if user is authenticated using Auth API.
+                            second_arg: str = None,
+                            payload_text: str = None) -> object:
+        """Check if the user is authenticated and authorized for the request.
 
-        Raises:
-            PumpWoodUnauthorized (Token autorization failed)
-                If is not possible to validate token.
+        Args:
+            request_method (str):
+                The HTTP method.
+            path (str):
+                The request path.
+            end_point (str):
+                The target endpoint.
+            first_arg (str):
+                The first URL argument.
+            second_arg (str):
+                The second URL argument.
+            payload_text (str):
+                The request payload (logged if authorization fails).
 
         Returns:
-            bool: True if success.
+            object:
+                The Flask request object on success.
 
+        Raises:
+            PumpWoodUnauthorized:
+                If the token authorization fails or is missing.
         """
         if cls.dummy_auth is True:
             return "Dummy auth"
@@ -211,18 +264,36 @@ class AuthFactory:
 
     @classmethod
     def get_user_hash_dict(cls, token: str) -> dict:
-        """Get user hash dict for logged user."""
+        """Create a dictionary for user data caching.
+
+        Args:
+            token (str):
+                The authorization token.
+
+        Returns:
+            dict:
+                The cache hash dictionary.
+        """
         return {
             'context': 'logged-user',
             'token': token
         }
 
     @classmethod
-    def retrieve_authenticated_user(cls):
-        """Retrieve user data using Auth API.
+    def retrieve_authenticated_user(cls) -> dict:
+        """Retrieve authenticated user data from the cache or Auth API.
 
-        Args:
-            token (str): Token used in authentication.
+        Queries the authorization service for profile and permission data,
+        caching the result in the current request (`g`) and the global
+        cache.
+
+        Returns:
+            dict:
+                The full authenticated user profile including permissions.
+
+        Raises:
+            PumpWoodUnauthorized:
+                If the server URL is missing or authorization is invalid.
         """
         # Raise errors if token is not set
         if AuthFactory.server_url is None:
@@ -264,25 +335,35 @@ class AuthFactory:
         return user_data
 
     @classmethod
-    def get_auth_header(cls):
-        """Return auth header to use on microservice."""
+    def get_auth_header(cls) -> dict:
+        """Extract the authorization header from the current Flask request.
+
+        Returns:
+            dict:
+                A dictionary containing the 'Authorization' header.
+        """
         token = flask_request.headers.get('Authorization', None)
         return copy.deepcopy({'Authorization': token})
 
     @classmethod
     def user_has_row_permission(cls, row_permission_id: int,
                                 raise_error: bool = True) -> bool:
-        """Retrieve user data using Auth API.
+        """Check if the authenticated user has a specific row permission.
 
         Args:
-            row_permission_id (str):
-                Check if user has row permission.
+            row_permission_id (int):
+                The ID of the row permission to check.
             raise_error (bool):
-                Raise PumpWoodUnauthorized error if user does not have
-                access to row_permission_id.
+                If True, raises a PumpWoodUnauthorized error if the
+                permission is missing.
 
-        Return:
-            Returns True is user has access.
+        Returns:
+            bool:
+                True if the user has the required permission.
+
+        Raises:
+            PumpWoodUnauthorized:
+                If raise_error is True and permission is missing.
         """
         authenticated_user = cls.retrieve_authenticated_user()
         all_row_permisson_set = authenticated_user['all_row_permisson_set']
