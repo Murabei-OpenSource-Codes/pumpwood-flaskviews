@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [1.5.20] - 2026-04-29
+### Added
+- Created `exceptions.py` to centralize custom exception classes.
+- Added comprehensive Google Style docstrings across the entire package.
+
+### Fix
+- Corrected orthographical and grammatical errors in comments and documentation.
+- Standardized error handling registration in `register_pumpwood_view`.
+
+### Changed
+- Refactored all docstrings to comply with Google Style guide (Args, Returns, Raises).
+- Enforced 80-character line limit for all documentation to adhere to PEP-8.
+- Improved type hints and semantic clarity in core classes and methods.
+
+
 ## [1.5.19] - 2026-04-27
 ### Added
 - No adds.
