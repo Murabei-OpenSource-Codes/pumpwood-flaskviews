@@ -306,7 +306,21 @@ class PumpWoodFlaskView(View):
                 raise exceptions.PumpWoodOtherException(msg)
 
     @staticmethod
-    def _allowed_extension(filename, allowed_extensions):
+    def _allowed_extension(filename: str, allowed_extensions: list) -> list:
+        """Validate if a file extension is permitted.
+
+        Args:
+            filename (str):
+                The full name of the uploaded file.
+            allowed_extensions (list):
+                List of strings representing permitted file extensions,
+                or ['*'] for any.
+
+        Returns:
+            list:
+                A list containing an error message string if the
+                extension is not allowed. An empty list if valid.
+        """
         extension = 'none'
         if '.' in filename:
             extension = filename.rsplit('.', 1)[1].lower()
@@ -321,12 +335,17 @@ class PumpWoodFlaskView(View):
         return []
 
     @staticmethod
-    def _get_request_payload(request):
-        """Get request payload treting both the JSON and form-data.
+    def _get_request_payload(request) -> dict:
+        """Get request payload treating both the JSON and form-data.
 
         Args:
-            request:
-                Flaks standard request object.
+            request (flask.Request):
+                Flask standard request object.
+
+        Returns:
+            dict:
+                A dictionary containing the parsed payload data. Returns
+                None if the HTTP method is not POST or PUT.
 
         Raises:
             PumpWoodWrongParameters:
@@ -348,6 +367,10 @@ class PumpWoodFlaskView(View):
                     "was not possible to load its content.")
                 raise exceptions.PumpWoodWrongParameters(
                     message=msg, payload={"__json__": json_data_str})
+
+            # It is expected that all fields will be sent as a serialized
+            # value at __json__. In some simple forms the data may be passed
+            # using form values, developer criteria.
             data.update(json_data)
         return data
 
@@ -891,8 +914,16 @@ class PumpWoodFlaskView(View):
         except Exception as e:
             raise exceptions.PumpWoodException(message=str(e))
 
-    def object_template(self):
-        """Return an empty object to be used as template to create new one."""
+    def object_template(self) -> dict:
+        """Return an empty serialized object to act as a template.
+
+        Useful for front-ends to instantiate a form for creating a
+        new object with the correct structure.
+
+        Returns:
+            dict:
+                A serialized dictionary of an empty model instance.
+        """
         empty_object = self.model_class()
         retrieve_serializer = self.serializer(many=False)
         return retrieve_serializer.dump(empty_object)
@@ -973,7 +1004,7 @@ class PumpWoodFlaskView(View):
                     base_query=base_query,
                     filter_dict=filter_dict,
                     exclude_dict=exclude_dict)
-            query_result.delete(synchronize_session='fetch')
+            query_result.delete(synchronize_session=False)
             session.commit()
 
         except Exception as e:
@@ -1044,10 +1075,12 @@ class PumpWoodFlaskView(View):
             # If it is an upsert operation and the object is not found,
             # it will not raise not found error and return an empty
             # object
-            print("pk:", pk)
-            print("upsert:", upsert)
             model_object = self.model_class.default_query_get(
                 pk=pk, raise_error=not upsert)
+
+        # Set if the object is new, this will be returned at the
+        # object results to differenciate the upsert operation
+        is_new_object = model_object is None
 
         to_save_obj = retrieve_serializer.load(
             data, instance=model_object, session=session)
@@ -1182,20 +1215,25 @@ class PumpWoodFlaskView(View):
         if self.microservice is not None and is_to_broadcast:
             # Process ETL Trigger for the model class
             self.microservice.login()
-            if pk is None:
+            if not is_new_object:
                 self.microservice.execute_action(
                     "ETLTrigger", action="process_triggers", parameters={
                         "model_class": self.model_class.__name__.lower(),
                         "type": "create",
                         "pk": None,
-                        "action_name": None})
+                        "action_name": None,
+                        "extra_info": result})
             else:
                 self.microservice.execute_action(
                     "ETLTrigger", action="process_triggers", parameters={
                         "model_class": self.model_class.__name__.lower(),
                         "type": "update",
                         "pk": result["pk"],
-                        "action_name": None})
+                        "action_name": None,
+                        "extra_info": result})
+
+        # 
+        result['__is_new_object__'] = is_new_object
         return result
 
     def save_file_streaming(self, pk: int | str, file_field: str,
@@ -1207,16 +1245,8 @@ class PumpWoodFlaskView(View):
                 The primary key of the object to be updated.
             file_field (str):
                 The field name in the model that stores the file path.
-            file_name (str):
-                The filename to be assigned (sanitized).
-            fields (list):
-                Specific fields to be returned in the resulting object.
-            foreign_key_fields (bool):
-                If True, expands foreign keys in the response.
-            related_fields (bool):
-                If True, expands related fields.
-            default_fields (bool):
-                If True, returns only the default fields.
+            **kwargs (str):
+                Other arguments used on the save end-point.
 
         Returns:
             dict:
@@ -1254,8 +1284,17 @@ class PumpWoodFlaskView(View):
         self.save(data=object_data, file_paths=file_paths)
         return upload_response
 
-    def get_actions(self):
-        """Get all actions with action decorator."""
+    def get_actions(self) -> dict:
+        """Retrieve all methods decorated as actions.
+
+        Scans the model class for methods and functions that have the
+        'is_action' attribute set to True.
+
+        Returns:
+            dict:
+                A dictionary mapping the action name to its respective
+                function reference.
+        """
         # this import works here only
         function_dict = dict(inspect.getmembers(
             self.model_class, predicate=inspect.isfunction))
@@ -1295,8 +1334,19 @@ class PumpWoodFlaskView(View):
             action_descriptions.append(action_dict)
         return action_descriptions
 
-    def list_actions_with_objects(self, objects):
-        """List model exposed actions acording to selected objects."""
+    def list_actions_with_objects(self, objects: dict) -> list:
+        """List model exposed actions according to selected objects.
+
+        Args:
+            objects (dict):
+                A payload or dictionary representing selected objects
+                from the front-end.
+
+        Returns:
+            list:
+                A list of strings containing descriptions of the
+                applicable actions.
+        """
         actions = self.get_actions()
         action_descriptions = [
             action.action_object.description
@@ -1453,12 +1503,34 @@ class PumpWoodFlaskView(View):
             user_type=user_type)
         return return_data
 
-    def search_options(self):
-        """# DEPRECTED # Return search options for list pages."""
+    def search_options(self) -> dict:
+        """Retrieve search options for list pages.
+
+        .. warning::
+            This method is deprecated.
+
+        Returns:
+            dict:
+                A dictionary describing the model fields.
+        """
         return self.cls_fields_options()
 
-    def fill_options(self, partial_data, field=None):
-        """# DEPRECTED # Return fill options for retrieve/save pages."""
+    def fill_options(self, partial_data: dict, field: str = None) -> dict:
+        """Retrieve fill options for retrieve and save pages.
+
+        .. warning::
+            This method is deprecated.
+
+        Args:
+            partial_data (dict):
+                The current state of the data in the front-end.
+            field (str):
+                A specific field to focus on. Defaults to None.
+
+        Returns:
+            dict:
+                A dictionary describing the model fields.
+        """
         return self.cls_fields_options()
 
     def list_view_options(self) -> dict:
