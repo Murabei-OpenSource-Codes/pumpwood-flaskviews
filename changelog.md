@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.5.21] - 2026-05-03
+### Added
+- No adds.
+
+### Fix
+- Replaced `synchronize_session='fetch'` with `synchronize_session=False` in
+`delete_many` bulk deletions to prevent memory exhaustion and latency spikes.
+
+### Changed
+- Standardized and completed Google Style docstrings and type hints for
+  multiple view methods (`_allowed_extension`, `_get_request_payload`,
+  `object_template`, `get_actions`, etc.).
+- Clarified data update order behavior in `_get_request_payload`
+  between `__json__` payloads and form values.
+
+
 ## [1.5.20] - 2026-04-29
 ### Added
 - Created `exceptions.py` to centralize custom exception classes.
