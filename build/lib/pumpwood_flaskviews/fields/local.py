@@ -19,7 +19,7 @@ from pumpwood_flaskviews.cache import PumpwoodFlaskGDiskCache
 
 
 def _get_sqlalchemy_type(obj: Any) -> str:
-    """Return a string indetifing the type of the SQLAlchemy object.
+    """Return a string identifying the type of the SQLAlchemy object.
 
     Args:
         obj (Any):
@@ -38,21 +38,6 @@ def _get_sqlalchemy_type(obj: Any) -> str:
     except NoInspectionAvailable:
         return "not_sqlalchemy"
 
-
-@dataclass
-class LocalForeignKeyFieldCacheHash(PumpwoodDataclassMixin):
-    """Dictionary to create cache hash dict for LocalForeignKeyField."""
-
-    authorization_token: str
-    """Request authorization token."""
-    model_class: str
-    """Model class for the autofill field."""
-    object_pk: str | int
-    """Pk associated with objecto to get the autofill field data."""
-    fields: str | None
-    """Field to extract data to fill object."""
-    context: str = 'pumpwood-flaskviews-local-foreignkey-field'
-    """Content of the file that will be returned at the action."""
 
 
 class LocalForeignKeyField(Field):
@@ -84,22 +69,22 @@ class LocalForeignKeyField(Field):
                 Local model class from which information will be retrieved,
                 it is possible to use string to avoid circular imports.
             serializer (str | PumpWoodSerializer):
-                Serializer that will be used serialize objects, it is possible
-                to use a string to avoid circular imports.
-            display_field  (str):
+                Serializer that will be used to serialize objects, it is
+                possible to use a string to avoid circular imports.
+            display_field (str):
                 Display field that is set as __display_field__ value
                 when returning the object.
-            complementary_source (Dict[str, str]): = dict()
+            complementary_source (Dict[str, str]):
                 When related field has a composite primary key it is
                 necessary to specify complementary primary key field to
-                fetch the object. The dictonary will set the mapping
+                fetch the object. The dictionary will set the mapping
                 of the complementary pk field to correspondent related
                 model obj key -> related object field.
             fields (List[str]):
-                Set the fileds that will be returned at the foreign key
+                Set the fields that will be returned at the foreign key
                 object.
             **kwargs:
-                Compatibylity with other versions and super of method.
+                Compatibility with other versions and super of method.
         """
         complementary_source = (
             {} if complementary_source is None
@@ -124,7 +109,7 @@ class LocalForeignKeyField(Field):
         if not isinstance(complementary_source, (dict)):
             msg = (
                 "Serializer for {name} complementary_source argument must "
-                "be a dictonary or None").format(name=model_class)
+                "be a dictionary or None").format(name=model_class)
             raise exceptions.PumpWoodOtherException(message=msg)
 
         # Set model_class and serializer as None at the object creation to
@@ -196,10 +181,12 @@ class LocalForeignKeyField(Field):
             user = AuthFactory.retrieve_authenticated_user()
             return {
                 "model_class": self.model_class,
+                "pk": object_pk,
+                "__display_field__": "Object not found",
                 "__error__": 'PumpWoodObjectDoesNotExist',
                 "payload": {
                     "pk": object_pk,
-                    "requester_username": user['username']}}
+                    "model_class": self.model_class}}
 
         except Exception:
             user = AuthFactory.retrieve_authenticated_user()
@@ -207,52 +194,24 @@ class LocalForeignKeyField(Field):
                 "Exception no caught when trying to retrieve FK using "
                 "local.\n"
                 "Object Model class and PK: [{model_class}] [{pk}]\n"
-                "Username and PK:[{username}] [{user_id}]")\
-                .format(
-                    model_class=self.model_class, pk=object_pk,
-                    username=user['username'], user_id=user['pk'])
-            logger.exception(error_msg)
+                "Username and PK:[{username}] [{user_id}]")
+            logger.exception(
+                error_msg,
+                model_class=self.model_class, pk=object_pk,
+                username=user['username'], user_id=user['pk'])
             return {
                 "model_class": self.model_class,
-                "__error__": 'PumpWoodOtherException',
+                "pk": object_pk,
                 "__display_field__": (
                     "Something went wrong, please contact support"),
+                "__error__": 'PumpWoodOtherException',
                 "payload": {
                     "pk": object_pk,
-                    "model_class": self.model_class,
-                    "requester_username": user['username']}}
+                    "model_class": self.model_class}}
 
         temp_serializer = self.serializer(
             many=False, fields=fields, default_fields=True)
         return temp_serializer.dump(obj)
-
-    def _retrieve_cache(self, object_pk: Union[int, str],
-                        fields: List[str]) -> dict:
-        """Retrieve data using object data and fields.
-
-        Function will also use auth header associated with request.
-
-        Args:
-            object_pk (Union[int, str]):
-                Object primary key to retrieve information using
-                microservice.
-            fields (List[str]):
-                Limit the fields that will be returned using microservice.
-        """
-        # Use auth header and object pk and context to fetch cache
-        hash_dict = LocalForeignKeyFieldCacheHash(
-            authorization_token=AuthFactory.get_auth_header()['Authorization'],
-            model_class=self.model_class.__name__,
-            object_pk=object_pk, fields=fields)
-        cache_result = PumpwoodFlaskGDiskCache.get(hash_dict=hash_dict)
-        if cache_result is not None:
-            msg = "get from local cache[{name}]".format(
-                name=self.model_class.__name__)
-            logger.info(msg)
-
-        return {
-            'hash_dict': hash_dict,
-            'cache_result': cache_result}
 
     def _set_display_field(self, object_data: dict) -> dict:
         """Add a __display_field__ to object data.
@@ -289,20 +248,13 @@ class LocalForeignKeyField(Field):
         if object_pk is None:
             return None
 
-        # Retrive data from localcache to reduce calls to backend.
-        cache_data = self._retrieve_cache(
-            object_pk=object_pk, fields=self.fields)
-        cache_result = cache_data.get('cache_result')
-        if cache_result is not None:
-            return cache_result
-
         # If cache for this auth header is not avaible, fetch from database
         # and serialize. Then set the cache
         data_result = self._retrieve_data(
             object_pk=object_pk, fields=self.fields)
-        data_result = self._set_display_field(object_data=data_result)
-        PumpwoodFlaskGDiskCache.set(
-            hash_dict=cache_data['hash_dict'], value=data_result)
+        is_error = data_result.get('__error__') is not None
+        if not is_error:
+            data_result = self._set_display_field(object_data=data_result)
         return data_result
 
     def _deserialize(self, value, attr, data, **kwargs):
@@ -369,13 +321,13 @@ class LocalRelatedField(Field):
                 Help text associated with related model. This will be
                 returned at fill_options data.
             fields (List[str]):
-                Set the fileds that will be returned at the foreign key
+                Set the fields that will be returned at the foreign key
                 object.
             read_only (bool):
                 Not implemented yet. It will set if it is possible to create
                 related objects using this end-point.
             **kwargs (dict):
-                Dictonary if extra parameters to be used on function.
+                Dictionary of extra parameters to be used on function.
         """
         complementary_foreign_key = (
             {} if complementary_foreign_key is None
@@ -409,16 +361,16 @@ class LocalRelatedField(Field):
                 "or None").format(name=self.__name__)
             raise exceptions.PumpWoodOtherException(message=msg)
 
-        if type(foreign_key) is not str:
+        if not isinstance(foreign_key, str):
             msg = "foreign_key type must be a str"
             raise exceptions.PumpWoodOtherException(message=msg)
-        if type(complementary_foreign_key) is not dict:
+        if not isinstance(complementary_foreign_key, dict):
             msg = "complementary_foreign_key type must be a dict"
             raise exceptions.PumpWoodOtherException(message=msg)
-        if type(order_by) is not list:
+        if not isinstance(order_by, list):
             msg = "order_by type must be a list"
             raise exceptions.PumpWoodOtherException(message=msg)
-        if type(exclude_dict) is not dict:
+        if not isinstance(exclude_dict, dict):
             msg = "exclude_dict type must be a dict"
             raise exceptions.PumpWoodOtherException(message=msg)
 
@@ -503,7 +455,13 @@ class LocalRelatedField(Field):
         return copy.deepcopy(self.fields)
 
     def _serialize(self, value, attr, obj, **kwargs):
-        """Use microservice to get object at serialization."""
+        """Use microservice to get object at serialization.
+
+        Related does not use cache since it will be used for seriailizing
+        an unique object. Caching using G object does not make sense since
+        it will not have another posterior object to consume this information
+        from cache.
+        """
         # Load model_class and serializer at the begginng of the serialization
         self._load_model_class()
         self._load_serializer()
@@ -528,25 +486,20 @@ class LocalRelatedField(Field):
                 "Filter dict: {filter_dict}\n"
                 "Exclude dict: {exclude_dict}\n"
                 "Order by: {order_by}\n"
-                "Fields: {fields}\n")\
-                .format(
-                    model_class=self.model_class,
-                    username=user['username'],
-                    user_id=user['pk'],
-                    filter_dict=filter_dict,
-                    exclude_dict=exclude_dict,
-                    order_by=order_by,
-                    fields=fields)
-            logger.exception(error_msg)
-            return {
+                "Fields: {fields}")
+            logger.exception(
+                error_msg, model_class=self.model_class,
+                username=user['username'], user_id=user['pk'],
+                filter_dict=filter_dict, exclude_dict=exclude_dict,
+                order_by=order_by, fields=fields)
+            return [{
                 "model_class": self.model_class,
                 "__error__": 'PumpWoodOtherException',
                 "__display_field__": (
                     "Something went wrong, please contact support"),
                 "payload": {
                     "filter_dict": filter_dict, "exclude_dict": exclude_dict,
-                    "order_by": order_by, "fields": fields,
-                    "requester_username": user['username']}}
+                    "order_by": order_by, "fields": fields}}]
 
         list_serializer = self.serializer(
             many=True, fields=fields, default_fields=True)
@@ -554,7 +507,7 @@ class LocalRelatedField(Field):
 
     def _deserialize(self, value, attr, data, **kwargs):
         raise NotImplementedError(
-            "MicroserviceRelatedField are read-only")
+            "LocalRelatedField are read-only")
 
     def to_dict(self):
         """Return a dict with values to be used on options end-point."""

@@ -17,26 +17,31 @@ from pumpwood_flaskviews.config import SERIALIZER_FK_CACHE_TIMEOUT
 
 @dataclass
 class MicroserviceForeignKeyFieldCacheHash(PumpwoodDataclassMixin):
-    """Dictionary to create cache hash dict for LocalForeignKeyField."""
+    """Dictionary to create cache hash dict for MicroserviceForeignKeyField.
+
+    This dataclass is used to generate a unique hash for caching foreign
+    key data retrieved from microservices, ensuring that authorization
+    and field selection are part of the cache key.
+    """
 
     authorization_token: str
     """Request authorization token."""
     model_class: str
     """Model class for the autofill field."""
     object_pk: str | int
-    """Pk associated with objecto to get the autofill field data."""
+    """Pk associated with object to get the autofill field data."""
     fields: str | None
     """Field to extract data to fill object."""
-    context: str = 'pumpwood-flaskviews-local-foreignkey-field'
-    """Content of the file that will be returned at the action."""
+    context: str = 'pumpwood-flaskviews-microservice-foreignkey-field'
+    """Context identifier for the cache entry."""
 
 
 class MicroserviceForeignKeyField(Field):
     """Serializer field for ForeignKey using microservice.
 
-    Returns a tupple with both real value on [0] and get_{field_name}_display
-    on [1]. to_internal_value uses only de first value os the tupple
-    if a tupple, or just the value if not a tupple.
+    Returns a dictionary with the object data retrieved from the
+    microservice. This field is read-only and is used to provide
+    related object information during serialization.
     """
 
     # Disable check if attribute exists on object, Micro service related are
@@ -56,26 +61,25 @@ class MicroserviceForeignKeyField(Field):
         Args:
             source (str):
                 Name of the field that contains foreign_key id.
-            complementary_source (Dict[str, str]): = dict()
-                When related field has a composite primary key it is
-                necessary to specify complementary primary key field to
-                fetch the object. The dictonary will set the mapping
-                of the complementary pk field to correspondent related
-                model obj key -> related object field.
             microservice (PumpWoodMicroService):
                 Microservice object that will be used to retrieve
                 foreign_key information.
             model_class (str):
                 Model class associated with Foreign Key.
-            display_field  (str):
+            display_field (str):
                 Display field that is set as __display_field__ value
                 when returning the object.
+            complementary_source (Dict[str, str]):
+                When related field has a composite primary key it is
+                necessary to specify complementary primary key field to
+                fetch the object. The dictionary will set the mapping
+                of the complementary pk field to correspondent related
+                model obj key -> related object field.
             fields (List[str]):
-                Set the fileds that will be returned at the foreign key
+                Set the fields that will be returned at the foreign key
                 object.
-            extra_pk_fields
             **kwargs:
-                Compatibylity with other versions and super of method.
+                Compatibility with other versions and super of method.
         """
         complementary_source = (
             {} if complementary_source is None
@@ -123,8 +127,8 @@ class MicroserviceForeignKeyField(Field):
                                fields: List[str]) -> dict:
         """Retrieve data using microservice and cache results.
 
-        Retrieve data using list one at the destination model_class, it
-        will cache de results on request object to reduce processing time.
+        Retrieve data using list_one at the destination model_class, it
+        will cache the results on request object to reduce processing time.
 
         Args:
             object_pk (Union[int, str]):
@@ -132,6 +136,10 @@ class MicroserviceForeignKeyField(Field):
                 microservice.
             fields (List[str]):
                 Limit the fields that will be returned using microservice.
+
+        Returns:
+            dict:
+                A dictionary containing the object data or error metadata.
         """
         hash_dict = MicroserviceForeignKeyFieldCacheHash(
             authorization_token=AuthFactory.get_auth_header()['Authorization'],
@@ -144,6 +152,7 @@ class MicroserviceForeignKeyField(Field):
         # If cache not found, retrieve data using microservice. At retrieve
         # call on pumpwood it will also try to retrieve information
         # from disk cache if avaiable.
+        is_error = False
         try:
             object_data = self.microservice.list_one(
                 model_class=self.model_class, pk=object_pk,
@@ -151,61 +160,63 @@ class MicroserviceForeignKeyField(Field):
                 disk_cache_expire=SERIALIZER_FK_CACHE_TIMEOUT)
 
         except exceptions.PumpWoodObjectDoesNotExist:
-            user = AuthFactory.retrieve_authenticated_user()
-            return {
+            is_error = True
+            object_data = {
                 "model_class": self.model_class,
+                "pk": object_pk,
                 "__error__": 'PumpWoodObjectDoesNotExist',
+                "__display_field__": "Object not found",
                 "payload": {
-                    "pk": object_pk,
-                    "requester_username": user['username']}}
+                    "pk": object_pk}}
 
         except exceptions.PumpWoodUnauthorized:
-            user = AuthFactory.retrieve_authenticated_user()
-            return {
+            is_error = True
+            object_data = {
                 "model_class": self.model_class,
+                "pk": object_pk,
                 "__error__": 'PumpWoodUnauthorized',
                 "__display_field__": (
                     "Your access token expired, login again."),
                 "payload": {
                     "pk": object_pk,
-                    "model_class": self.model_class,
-                    "requester_username": user['username']}}
+                    "model_class": self.model_class}}
 
         except exceptions.PumpWoodForbidden:
-            user = AuthFactory.retrieve_authenticated_user()
-            return {
+            is_error = True
+            object_data = {
                 "model_class": self.model_class,
+                "pk": object_pk,
                 "__error__": 'PumpWoodForbidden',
                 "__display_field__": (
                     "You do not have access to this end-point"),
                 "payload": {
                     "pk": object_pk,
-                    "model_class": self.model_class,
-                    "requester_username": user['username']}}
+                    "model_class": self.model_class}}
 
         except Exception:
+            is_error = True
             user = AuthFactory.retrieve_authenticated_user()
             error_msg = (
                 "Exception no caught when trying to retrieve FK using "
                 "microservice.\n"
                 "Object Model class and PK: [{model_class}] [{pk}]\n"
-                "Username and PK:[{username}] [{user_id}]")\
-                .format(
-                    model_class=self.model_class, pk=object_pk,
-                    username=user['username'], user_id=user['pk'])
-            logger.exception(error_msg)
-            return {
+                "Username and PK:[{username}] [{user_id}]")
+            logger.exception(
+                error_msg,
+                model_class=self.model_class, pk=object_pk,
+                username=user['username'], user_id=user['pk'])
+            object_data = {
                 "model_class": self.model_class,
+                "pk": object_pk,
                 "__error__": 'PumpWoodOtherException',
                 "__display_field__": (
                     "Something went wrong, please contact support"),
                 "payload": {
                     "pk": object_pk,
-                    "model_class": self.model_class,
-                    "requester_username": user['username']}}
+                    "model_class": self.model_class}}
 
         # Add display field to facilitate frontend development
-        if self.display_field is not None:
+        if self.display_field is not None and not is_error:
             if self.display_field not in object_data.keys():
                 msg = (
                     "Serializer not correctly configured, it is not possible "
@@ -220,11 +231,12 @@ class MicroserviceForeignKeyField(Field):
                         "foreign_key": self.name,
                         "model_class": self.model_class})
             object_data['__display_field__'] = object_data[self.display_field]
-        else:
+        elif not is_error:
             object_data['__display_field__'] = None
 
         # Set g object cache to reduce disk cache calls
-        PumpwoodFlaskGCache.set(hash_dict=hash_dict, value=object_data)
+        PumpwoodFlaskGCache.set(
+            hash_dict=hash_dict, value=object_data)
         return object_data
 
     def _serialize(self, value, attr, obj, **kwargs):
@@ -241,8 +253,8 @@ class MicroserviceForeignKeyField(Field):
                 obj=obj, primary_keys=primary_keys)
 
         # Return an empty object if object pk is None, this will help
-        # the front-end when always treating forenging key as a
-        # dictonary/object field.
+        # the front-end when always treating foreign key as a
+        # dictionary/object field.
         if object_pk is None:
             return {"model_class": self.model_class}
         return self._microservice_retrieve(
@@ -297,9 +309,6 @@ class MicroserviceRelatedField(Field):
             pk_field (str):
                 Field of the origin model class that will be used to filter
                 related models at foreign_key.
-            display_field (str):
-                Display field that is set as __display_field__ value
-                when returning the object.
             order_by (List[str]):
                 List of strings that will be used to order query results.
             exclude_dict (Dict[str, str]):
@@ -309,13 +318,13 @@ class MicroserviceRelatedField(Field):
                 Help text associated with related model. This will be
                 returned at fill_options data.
             fields (List[str]):
-                Set the fileds that will be returned at the foreign key
+                Set the fields that will be returned at the foreign key
                 object.
             read_only (bool):
                 Not implemented yet. It will set if it is possible to create
                 related objects using this end-point.
             **kwargs (dict):
-                Dictonary if extra parameters to be used on function.
+                Dictionary of extra parameters to be used on function.
         """
         complementary_foreign_key = (
             {} if complementary_foreign_key is None
@@ -403,7 +412,13 @@ class MicroserviceRelatedField(Field):
         return copy.deepcopy(self.fields)
 
     def _serialize(self, value, attr, obj, **kwargs):
-        """Use microservice to get object at serialization."""
+        """Use microservice to get object at serialization.
+
+        Cache is not used on this serialization since this type of field
+        is only used for `many=False` serializations. It will only serialize
+        one object with one related field, which will lead to G cache calls
+        to be not used (just one object, no other to retrieve the cache.)
+        """
         self.microservice.login()
         filter_dict = self._get_list_arg_filter_dict(obj)
         exclude_dict = self._get_list_arg_exclude_dict(obj)
@@ -418,38 +433,32 @@ class MicroserviceRelatedField(Field):
                 default_fields=True)
 
         except exceptions.PumpWoodObjectDoesNotExist:
-            user = AuthFactory.retrieve_authenticated_user()
-            return {
+            return [{
                 "model_class": self.model_class,
                 "__error__": 'PumpWoodObjectDoesNotExist',
                 "payload": {
                     "filter_dict": filter_dict, "exclude_dict": exclude_dict,
-                    "order_by": order_by, "fields": fields,
-                    "requester_username": user['username']}}
+                    "order_by": order_by, "fields": fields}}]
 
         except exceptions.PumpWoodUnauthorized:
-            user = AuthFactory.retrieve_authenticated_user()
-            return {
+            return [{
                 "model_class": self.model_class,
                 "__error__": 'PumpWoodUnauthorized',
                 "__display_field__": (
                     "Your access token expired, login again."),
                 "payload": {
                     "filter_dict": filter_dict, "exclude_dict": exclude_dict,
-                    "order_by": order_by, "fields": fields,
-                    "requester_username": user['username']}}
+                    "order_by": order_by, "fields": fields}}]
 
         except exceptions.PumpWoodForbidden:
-            user = AuthFactory.retrieve_authenticated_user()
-            return {
+            return [{
                 "model_class": self.model_class,
                 "__error__": 'PumpWoodForbidden',
                 "__display_field__": (
                     "You do not have access to this end-point"),
                 "payload": {
                     "filter_dict": filter_dict, "exclude_dict": exclude_dict,
-                    "order_by": order_by, "fields": fields,
-                    "requester_username": user['username']}}
+                    "order_by": order_by, "fields": fields}}]
 
         except Exception:
             user = AuthFactory.retrieve_authenticated_user()
@@ -461,25 +470,21 @@ class MicroserviceRelatedField(Field):
                 "Filter dict: {filter_dict}\n"
                 "Exclude dict: {exclude_dict}\n"
                 "Order by: {order_by}\n"
-                "Fields: {fields}\n")\
-                .format(
-                    model_class=self.model_class,
-                    username=user['username'],
-                    user_id=user['pk'],
-                    filter_dict=filter_dict,
-                    exclude_dict=exclude_dict,
-                    order_by=order_by,
-                    fields=fields)
-            logger.exception(error_msg)
-            return {
+                "Fields: {fields}")
+            logger.exception(
+                error_msg,
+                model_class=self.model_class, username=user['username'],
+                user_id=user['pk'], filter_dict=filter_dict,
+                exclude_dict=exclude_dict, order_by=order_by,
+                fields=fields)
+            return [{
                 "model_class": self.model_class,
                 "__error__": 'PumpWoodOtherException',
                 "__display_field__": (
                     "Something went wrong, please contact support"),
                 "payload": {
                     "filter_dict": filter_dict, "exclude_dict": exclude_dict,
-                    "order_by": order_by, "fields": fields,
-                    "requester_username": user['username']}}
+                    "order_by": order_by, "fields": fields}}]
 
     def _deserialize(self, value, attr, data, **kwargs):
         raise NotImplementedError(

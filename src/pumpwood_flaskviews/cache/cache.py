@@ -136,7 +136,7 @@ class PumpwoodFlaskGDiskCache:
 
     @classmethod
     def set(cls, hash_dict: dict, value: Any, expire: int = None,
-            tag_dict: dict = None) -> bool:
+            tag_dict: dict = None, set_g_only: bool = False) -> bool:
         """Store a value in both the request-scoped and global disk caches.
 
         Args:
@@ -148,13 +148,16 @@ class PumpwoodFlaskGDiskCache:
                 Seconds until the global cache entry expires.
             tag_dict (dict):
                 Metadata tags used for bulk eviction.
+            set_g_only (bool):
+                Set the cache on G object only.
 
         Returns:
             bool:
                 Always returns True.
         """
         PumpwoodFlaskGCache.set(hash_dict=hash_dict, value=value)
-        default_cache.set(
-            hash_dict=hash_dict, value=value, expire=expire,
-            tag_dict=tag_dict)
+        if not set_g_only:
+            default_cache.set(
+                hash_dict=hash_dict, value=value, expire=expire,
+                tag_dict=tag_dict)
         return True

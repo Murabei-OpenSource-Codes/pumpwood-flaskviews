@@ -35,7 +35,7 @@ def _try_convert_int(value: str):
 
 @dataclass
 class FlaskPumpWoodBaseModelCacheHash(PumpwoodDataclassMixin):
-    """Dictionary to create cache hash dict for LocalForeignKeyField.
+    """Dictionary to create cache hash dict for FlaskPumpWoodBaseModel.
 
     This dataclass is used to generate a unique hash for caching
     purposes, ensuring that the same object is not fetched multiple
@@ -47,11 +47,11 @@ class FlaskPumpWoodBaseModelCacheHash(PumpwoodDataclassMixin):
     model_class: str
     """Model class for the autofill field."""
     object_pk: str | int | dict
-    """Pk associated with objecto to get the autofill field data."""
+    """Pk associated with object to get the autofill field data."""
     get_type: Literal['default', 'query']
-    """Field to extract data to fill object."""
-    context: str = 'pumpwood-flaskviews-local-foreignkey-field'
-    """Content of the file that will be returned at the action."""
+    """Identifier for the type of query (default or unfiltered)."""
+    context: str = 'pumpwood-flaskviews-model-get-cache'
+    """Context identifier for the cache entry."""
 
 
 class FlaskPumpWoodBaseModel(DeclarativeBase):
@@ -75,15 +75,15 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
     or object ownership."""
 
     table_partition: list[str] = []
-    """Specify table particions that are applied the database. It is expected
-       that tables with more the one partition at least the first one must
+    """Specify table partitions that are applied the database. It is expected
+       that tables with more than one partition at least the first one must
        be specified on the queries."""
 
     HASH_DICT = {
         'context': 'flaskviews--model-query-retrieve',
         'model_class': None, 'pk': None, 'get-type': None
     }
-    """Template for hash dictonary."""
+    """Template for hash dictionary."""
 
     @classmethod
     def build_get_cache_hash(cls, pk: str | int,
@@ -244,6 +244,10 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
         if use_cache:
             cache_data = PumpwoodFlaskGCache.get(hash_dict=hash_dict)
             if cache_data is not None:
+                if isinstance(cache_data, Exception):
+                    if raise_error:
+                        raise cache_data
+                    return None
                 return cache_data
 
         converted_pk = None
@@ -267,14 +271,18 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
             # indicating that the primary key was not found on database,
             # raise_error=False will return a None object, this is usefull
             # for upsert operations.
+            message = "Requested object {model_class}[{pk}] not found."
+            error = PumpWoodObjectDoesNotExist(
+                message=message, payload={
+                    "model_class": cls.__name__,
+                    "pk": _try_convert_int(pk)})
+            if use_cache:
+                # Set the cache on G object to avoid calling the database
+                # many times for not found objects
+                PumpwoodFlaskGCache.set(hash_dict=hash_dict, value=error)
             if raise_error:
-                message = "Requested object {model_class}[{pk}] not found."
-                raise PumpWoodObjectDoesNotExist(
-                    message=message, payload={
-                        "model_class": cls.__name__,
-                        "pk": _try_convert_int(pk)})
-            else:
-                return None
+                raise error
+            return None
 
         # If more than one object is returned, it indicates that the
         # fields used to retrive the information can not be considered
@@ -377,6 +385,9 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
             PumpWoodOtherException:
                 If query returns more than one object.
         """
+        # Is is not possible to unify the implementation because the cache
+        # for default query uses the base query filter and the query do not.
+        # Unify leads to cache inconstency.
         hash_dict = FlaskPumpWoodBaseModelCacheHash(
             authorization_token=AuthFactory.get_auth_header()['Authorization'],
             model_class=cls.__name__, object_pk=pk,
@@ -384,6 +395,10 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
         if use_cache:
             cache_data = PumpwoodFlaskGCache.get(hash_dict=hash_dict)
             if cache_data is not None:
+                if isinstance(cache_data, Exception):
+                    if raise_error:
+                        raise cache_data
+                    return None
                 return cache_data
 
         converted_pk = None
@@ -405,12 +420,27 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
         # then one result
         model_object_results = tmp_base_query\
             .filter_by(**converted_pk).all()
-        if len(model_object_results) == 0 and raise_error:
+        if len(model_object_results) == 0:
+            # If raise_error=True, it will raise PumpWoodObjectDoesNotExist
+            # indicating that the primary key was not found on database,
+            # raise_error=False will return a None object, this is usefull
+            # for upsert operations.
             message = "Requested object {model_class}[{pk}] not found."
-            raise PumpWoodObjectDoesNotExist(
+            error = PumpWoodObjectDoesNotExist(
                 message=message, payload={
-                    "model_class": cls.__name__,
-                    "pk": _try_convert_int(pk)})
+                   "model_class": cls.__name__,
+                   "pk": _try_convert_int(pk)})
+            if use_cache:
+                # Set the cache on G object to avoid calling the database
+                # many times for not found objects
+                PumpwoodFlaskGCache.set(hash_dict=hash_dict, value=error)
+            if raise_error:
+                raise error
+            return None
+
+        # If more than one object is returned, it indicates that the
+        # fields used to retrive the information can not be considered
+        # unique on database
         elif len(model_object_results) != 1:
             msg = (
                 "Get query for {model_class}[{pk}] returned more than "
@@ -419,12 +449,13 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
                 message=msg, payload={
                     "model_class": cls.__name__,
                     "pk": _try_convert_int(pk)})
+
+        # Get first element
         model_object = model_object_results[0]
 
         # Is cache is not to be used, probably it is a bulk operation
         # or an update on save, setting cache may renew old data
         # on cache.
         if use_cache:
-            # Set a local cache for object using g object
             PumpwoodFlaskGCache.set(hash_dict=hash_dict, value=model_object)
         return model_object
