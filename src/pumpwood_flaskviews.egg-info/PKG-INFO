@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: pumpwood-flaskviews
-Version: 1.5.22
+Version: 1.5.23
 Summary: Assist creation of flask views in Pumpwood format..
 Home-page: https://github.com/Murabei-OpenSource-Codes/pumpwood-flaskviews
 Author: Murabei Data Science
@@ -35,7 +35,7 @@ Dynamic: requires-python
 Dynamic: summary
 
 # Pumpwood Flask Views
-Assist creation of Pumpwood views in Flask.
+Assists in the creation of Pumpwood views in Flask.
 
 <a href="https://github.com/Murabei-OpenSource-Codes/pumpwood-miscellaneous">
   pumpwood-flaskviews
@@ -45,12 +45,12 @@ Assist creation of Pumpwood views in Flask.
   <img src="doc/sitelogo-horizontal.png" /> <br>
 
   <a href="https://en.wikipedia.org/wiki/Cecropia">
-    Pumpwood is a native brasilian tree
+    Pumpwood is a native Brazilian tree
   </a> which has a symbiotic relation with ants (Murabei)
 </p>
 
 # Description
-This package assist the creation of views in flask using Pumpwood pattern.
+This package assists in the creation of views in Flask using the Pumpwood pattern.
 
 # Enviroment variables
 - **PUMPWOOD_FLASKVIEWS__INFO_CACHE_TIMEOUT (int):** Default to 10 minutes (600),
@@ -65,9 +65,9 @@ This package assist the creation of views in flask using Pumpwood pattern.
   cache.
 
 ## pumpwood_flaskviews.action
-Expose models functions at the API. It is possible to expose normal and
-classmethods, the first argument for each one should respect the convention
-self and cls respectively.
+Expose model functions through the API. It is possible to expose normal and
+classmethods; the first argument for each should respect the convention
+`self` and `cls` respectively.
 
 ```
 from pumpwood_flaskviews.action import action
@@ -175,12 +175,12 @@ Define pumpwood basic views. They have always the same pattern:
 
 #### Class Attributes
 ##### description [str]:
-Description of the model, this can be used to display model
-navegation on side bar. During call to end-point information
+Description of the model; this can be used to display model
+navigation on the sidebar. During calls to endpoint information,
 this attribute will be passed to i18n for translation.
 
 ##### dimensions [dict]:
-Dictionary of tag/value, this will be registred at model class
+Dictionary of tag/value; this will be registered at the model class
 route.
 
 ##### icon [str]:
@@ -200,19 +200,19 @@ Microservice used to connect to other microservices in
 pumpwood. This microservice must be authenticated.
 
 ##### serializer [PumpWoodSerializer]:
-Serialize to be used to serialize model objects at end-points.
+Serializer to be used to serialize model objects at endpoints.
 
 ##### list_fields [list(str)]:
 List of fields that will be considered as default to be displayed
 when calling list with default fields.
 
-It is possible to modify function `get_list_fields` to make
-list_fields to adapt to request.
+It is possible to modify the function `get_list_fields` to make
+`list_fields` adapt to the request.
 
 ##### foreign_keys [dict]:
-A dictionary to describe relation of this model with other models
-in Pumpwood. This is informational data and does nos verify if
-model actualy exists on Pumpwood. There are two types of
+A dictionary to describe the relation of this model with other models
+in Pumpwood. This is informational data and does not verify if the
+model actually exists on Pumpwood.
 
 ##### gui_retrieve_fieldset [dict]:
 Set a dictionary for rendering frontend, it specify groups of fields to be displayed together. It also permits pass to
@@ -370,4 +370,28 @@ class PersonView(PumpWoodFlaskView):
     gui_verbose_field = '{pk} | {name}'
     gui_readonly = ["birth_date"]
     #######
+
+
+### Fail-Soft Serialization
+Pumpwood Flask Views implements a "fail-soft" pattern for related fields
+(`MicroserviceForeignKeyField`, `LocalRelatedField`, etc.). If a related
+object cannot be retrieved (e.g., due to a 404 Not Found or a 403 Forbidden
+error), the serializer will not crash. Instead, it returns a standardized
+error object within the field:
+
+```json
+{
+  "model_class": "Person",
+  "__error__": "PumpWoodObjectDoesNotExist",
+  "__display_field__": "Object not found",
+  "payload": {
+    "pk": 123
+  }
+}
+```
+
+This ensures that the main object can still be serialized and returned to
+the client even if some secondary relations are temporarily unavailable.
+Sensitive user information is stripped from these error returns and is
+only available in the server-side logs.
 ```

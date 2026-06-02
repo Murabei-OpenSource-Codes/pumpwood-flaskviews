@@ -76,6 +76,9 @@ class ChoiceField(fields.Field):
 
     def _serialize(self, value, attr, obj):
         if value is not None:
+            if isinstance(value, str):
+                return value
+
             return value.code
         return None
 

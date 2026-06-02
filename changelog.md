@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.5.22] - 2026-05-08
+### Added
+- **Request-Scoped Error Caching**: Implemented in-memory caching (G-cache) for `PumpWoodObjectDoesNotExist` exceptions in `default_query_get` and `query_get`. This prevents repeated database hits for non-existent objects during the same request lifecycle.
+
+### Changed
+- **Exception Response Standardization**:
+  - Refactored `MicroserviceForeignKeyField`, `MicroserviceRelatedField`, `LocalForeignKeyField`, and `LocalRelatedField` to return standardized error payloads.
+  - Removed `requester_username` and `user_id` from serialized error returns to ensure data privacy, while keeping them in structured server-side logs via `loguru`.
+- **Improved Field Consistency**:
+  - Guaranteed that `MicroserviceRelatedField` and `LocalRelatedField` always return a list `[{...}]`, even in error states, to maintain type consistency for API consumers.
+  - Updated `LocalForeignKeyField` to leverage the model-level G-cache, reducing redundant database lookups.
+- **Modernized Documentation & Logging**:
+  - Conducted a full audit of docstrings across `microservice.py`, `local.py`, and `general.py` to enforce Google Style and 80-character line limits.
+  - Standardized `loguru` usage to pass structured metadata instead of pre-formatted strings for better observability.
+
+### Fixed
+- Fixed a `TypeError` in `MicroserviceForeignKeyField` caused by passing unsupported arguments to the RAM-only cache layer.
+- Corrected numerous typos and copy-paste errors across the fields and models modules.
+
 ## [1.5.21] - 2026-05-03
 ### Added
 - No adds.
