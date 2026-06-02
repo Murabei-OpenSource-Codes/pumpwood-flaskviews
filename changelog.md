@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.5.23] - 2026-06-02
+### Added
+- **Fail-Soft Serialization Documentation**: Added a detailed section in the
+  README explaining the "fail-soft" serialization pattern for related fields.
+
+### Changed
+- **Documentation Refinements**: Corrected grammar, formatting, and typos in the
+  README file to improve clarity and readability.
+
+### Fixed
+- **ChoiceField Serialization**: Added checks to handle string values directly,
+  preventing errors when calling `.code` on strings.
+
+
 ## [1.5.22] - 2026-05-08
 ### Added
 - **Request-Scoped Error Caching**: Implemented in-memory caching (G-cache) for `PumpWoodObjectDoesNotExist` exceptions in `default_query_get` and `query_get`. This prevents repeated database hits for non-existent objects during the same request lifecycle.
