@@ -128,6 +128,10 @@ class ChoiceField(fields.Field):
             PumpWoodObjectSavingException:
                 If the value is not a string.
         """
+        # It is necessary to treat the string cases, at some implementation
+        # the value of the attribute will be set direcly on Python.
+        # It is necessary on those since the attribute will be a string
+        # on serialization.
         if isinstance(value, str):
             return value
         else:
