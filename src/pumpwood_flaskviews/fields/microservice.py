@@ -3,7 +3,7 @@ import copy
 from dataclasses import dataclass
 from loguru import logger
 from typing import List, Dict, Any, Union
-from marshmallow.fields import Field, IntField
+from marshmallow.fields import Field, Integer
 from pumpwood_communication import exceptions
 from pumpwood_communication.exceptions import raise_from_dict
 from pumpwood_communication.serializers import CompositePkBase64Converter
@@ -11,6 +11,7 @@ from pumpwood_communication.microservices import PumpWoodMicroService
 from pumpwood_communication.type import (
     ForeignKeyColumnExtraInfo, RelatedColumnExtraInfo,
     PumpwoodDataclassMixin)
+from pumpwood_flaskviews.query.aux import get_base_filter_skip
 from pumpwood_flaskviews.auth import AuthFactory
 from pumpwood_flaskviews.cache import PumpwoodFlaskGCache
 from pumpwood_flaskviews.config import SERIALIZER_FK_CACHE_TIMEOUT
@@ -500,7 +501,7 @@ class MicroserviceRelatedField(Field):
             fields=self.fields)
 
 
-class ValidateForeignKeyFieldMicroservice(IntField):
+class ValidateForeignKeyFieldMicroservice(Integer):
     """Integer FK field that validates access via microservice retrieve.
 
     Deserializes the value as an integer primary key and checks that
@@ -567,10 +568,13 @@ class ValidateForeignKeyFieldMicroservice(IntField):
         
         # If cache not found, retrieve data using microservice.
         try:
+            # Propagate the base_filter_skip to validate access to FK
+            base_filter_skip = get_base_filter_skip()
             obj = self.microservice.retrieve(
-                pk=object_pk, use_disk_cache=True, auth_header=auth_header,
-                fields=['pk'], raise_error=True)
-        except exceptions.PumpWoodObjectDoesNotExist as e:
+                model_class=self.model_class, pk=object_pk,
+                use_disk_cache=True, auth_header=auth_header, fields=['pk'],
+                base_filter_skip=base_filter_skip)
+        except exceptions.PumpWoodException as e:
             # To dict will create a dictionary with the error information,
             # set the cache and raise the exception.
             error_dict = e.to_dict()

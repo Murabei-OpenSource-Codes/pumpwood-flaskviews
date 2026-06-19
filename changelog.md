@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.5.26] - 2026-06-19
+
+### Added
+- **ValidateForeignKeyFieldLocal**: Integer foreign key field that validates
+  user access to a related local model object via `default_query_get` on
+  deserialize.
+- **ValidateForeignKeyFieldMicroservice**: Integer foreign key field that
+  validates user access to a related remote object via microservice
+  `retrieve` on deserialize.
+- **Field Exports**: Exported `ValidateForeignKeyFieldLocal` and
+  `ValidateForeignKeyFieldMicroservice` from `pumpwood_flaskviews.fields`.
+
+### Changed
+- **Poetry Build**: Replaced `setup.py`/`setuptools` build with Poetry
+  using `pyproject_template.toml` as the versioned package manifest.
+- **Beta Versioning**: Updated `build.sh` to append `-b.0` to the version
+  on non-`main`/`master` branches.
+- **ChoiceField Documentation**: Added Google Style docstrings to
+  `ChoiceField` validation and (de)serialization methods.
+
 ## [1.5.23] - 2026-06-02
 ### Added
 - **Fail-Soft Serialization Documentation**: Added a detailed section in the

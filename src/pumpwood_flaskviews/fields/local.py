@@ -3,7 +3,7 @@ import copy
 from dataclasses import dataclass
 from loguru import logger
 from typing import List, Dict, Any, Union
-from marshmallow.fields import Field, IntField
+from marshmallow.fields import Field, Integer
 from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import Mapper, InstanceState
 from sqlalchemy.exc import NoInspectionAvailable
@@ -521,7 +521,7 @@ class LocalRelatedField(Field):
             fields=self.fields)
 
 
-class ValidateForeignKeyFieldLocal(IntField):
+class ValidateForeignKeyFieldLocal(Integer):
     """Integer FK field that validates user access to referenced object.
 
     Deserializes the value as an integer primary key and checks that
