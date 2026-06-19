@@ -3,8 +3,9 @@ import copy
 from dataclasses import dataclass
 from loguru import logger
 from typing import List, Dict, Any, Union
-from marshmallow.fields import Field
+from marshmallow.fields import Field, IntField
 from pumpwood_communication import exceptions
+from pumpwood_communication.exceptions import raise_from_dict
 from pumpwood_communication.serializers import CompositePkBase64Converter
 from pumpwood_communication.microservices import PumpWoodMicroService
 from pumpwood_communication.type import (
@@ -497,3 +498,110 @@ class MicroserviceRelatedField(Field):
             foreign_key=self.foreign_key,
             complementary_foreign_key=self.complementary_foreign_key,
             fields=self.fields)
+
+
+class ValidateForeignKeyFieldMicroservice(IntField):
+    """Integer FK field that validates access via microservice retrieve.
+
+    Deserializes the value as an integer primary key and checks that
+    the related row exists and is visible for the current user.
+    """
+
+    def __init__(self, *args, model_class: str,
+                 not_logged_microservice: PumpWoodMicroService, **kwargs):
+        """Class constructor.
+
+        Args:
+            model_class (str):
+                Model class name for the foreign key target on the
+                remote microservice.
+            not_logged_microservice (PumpWoodMicroService):
+                Microservice client used to retrieve the related
+                object. Request auth is forwarded via auth_header.
+            *args:
+                Positional arguments forwarded to IntField.
+            **kwargs:
+                Keyword arguments forwarded to IntField.
+        """
+        if not isinstance(model_class, str):
+            msg = (
+                "Serializer for {name} model_class argument must be a "
+                "string.").format(name=self.__class__.__name__)
+            raise exceptions.PumpWoodOtherException(message=msg)
+
+        self.model_class = model_class
+        self.microservice = not_logged_microservice
+        super().__init__(*args, **kwargs)
+
+    def _validate_obj_access(self, object_pk: str | int) -> None:
+        """Validate if user has access to object.
+
+        Args:
+            object_pk (str | int):
+                Primary key of the related object.
+
+        Raises:
+            PumpWoodObjectDoesNotExist:
+                If the object was not found or is not accessible.
+            PumpWoodUnauthorized:
+                If the request auth token is invalid or expired.
+            PumpWoodForbidden:
+                If the user lacks permission to access the object.
+        """
+        auth_header = AuthFactory.get_auth_header()
+        # Use just the pk as field to retrieve the object since it is not
+        # necessary to retrieve the object data, just the access.
+        hash_dict = MicroserviceForeignKeyFieldCacheHash(
+            authorization_token=auth_header['Authorization'],
+            model_class=self.model_class, object_pk=object_pk,
+            fields=['pk'])
+        g_cached_data = PumpwoodFlaskGCache.get(hash_dict=hash_dict)
+        if g_cached_data is not None:
+            # Check if it is an error and raise it.
+            error_type = g_cached_data.get('__error__')
+            if error_type is not None:
+                # Will raise the exception from the dictionary using default
+                # Pumpwood exception classes.
+                raise_from_dict(exception_dict=g_cached_data)
+            return g_cached_data
+        
+        # If cache not found, retrieve data using microservice.
+        try:
+            obj = self.microservice.retrieve(
+                pk=object_pk, use_disk_cache=True, auth_header=auth_header,
+                fields=['pk'], raise_error=True)
+        except exceptions.PumpWoodObjectDoesNotExist as e:
+            # To dict will create a dictionary with the error information,
+            # set the cache and raise the exception.
+            error_dict = e.to_dict()
+            PumpwoodFlaskGCache.set(hash_dict=hash_dict, value=error_dict)
+            raise e
+
+        PumpwoodFlaskGCache.set(hash_dict=hash_dict, value=obj)
+
+    def _deserialize(self, value, attr, data, **kwargs):
+        """Deserialize integer FK and validate related object access.
+
+        Args:
+            value:
+                Raw input value for the field.
+            attr (str):
+                Attribute name on the schema.
+            data (dict):
+                Full input data dictionary.
+
+        Returns:
+            int:
+                Deserialized primary key value.
+
+        Raises:
+            PumpWoodObjectDoesNotExist:
+                If the related object was not found or is not accessible.
+            PumpWoodUnauthorized:
+                If the request auth token is invalid or expired.
+            PumpWoodForbidden:
+                If the user lacks permission to access the object.
+        """
+        val = super()._deserialize(value, attr, data, **kwargs)
+        self._validate_obj_access(object_pk=val)
+        return val

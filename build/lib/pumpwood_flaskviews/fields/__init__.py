@@ -4,9 +4,10 @@ from .audit import (
 from .general import (
     GeometryField, ChoiceField, PrimaryKeyField)
 from .microservice import (
-    MicroserviceForeignKeyField, MicroserviceRelatedField)
+    MicroserviceForeignKeyField, MicroserviceRelatedField,
+    ValidateForeignKeyFieldMicroservice)
 from .local import (
-    LocalForeignKeyField, LocalRelatedField)
+    LocalForeignKeyField, LocalRelatedField, ValidateForeignKeyFieldLocal)
 from .encrypt import EncryptedField
 from .readonly import ReadOnlyChoiceField
 from .row_permission import RowPermissionField
@@ -19,4 +20,5 @@ __all__ = [
     MicroserviceForeignKeyField, MicroserviceRelatedField,
     EncryptedField, LocalForeignKeyField, LocalRelatedField,
     ReadOnlyChoiceField, RowPermissionField, AutoFillFieldLocal,
-    AutoFillFieldMicroservice]
+    AutoFillFieldMicroservice, ValidateForeignKeyFieldLocal,
+    ValidateForeignKeyFieldMicroservice]

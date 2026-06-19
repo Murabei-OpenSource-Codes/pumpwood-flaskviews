@@ -57,7 +57,17 @@ class ChoiceField(fields.Field):
         super().__init__(validate=validators, *args, **kwargs)
 
     def _validate_choice(self, value):
-        """Validate if the provided value is among the allowed choices."""
+        """Validate if the provided value is among the allowed choices.
+
+        Args:
+            value (Any):
+                The value to validate. Can be a string or an object with
+                a 'code' attribute.
+
+        Raises:
+            PumpWoodObjectSavingException:
+                If the value is not found within the allowed choices.
+        """
         if self.allow_none and value is None:
             return None
         check_value = None
@@ -75,6 +85,23 @@ class ChoiceField(fields.Field):
                 msg, payload={'value': check_value, 'choices': val_choices})
 
     def _serialize(self, value, attr, obj):
+        """Serialize the field value.
+
+        If the value is a string, it returns it directly. Otherwise, it
+        attempts to return its 'code' attribute.
+
+        Args:
+            value (Any):
+                The field value to serialize.
+            attr (str):
+                The name of the attribute.
+            obj (Any):
+                The object owning the attribute.
+
+        Returns:
+            str:
+                The serialized string value.
+        """
         if value is not None:
             if isinstance(value, str):
                 return value
@@ -83,6 +110,28 @@ class ChoiceField(fields.Field):
         return None
 
     def _deserialize(self, value, attr, data):
+        """Deserialize the input value.
+
+        Args:
+            value (Any):
+                The input value to deserialize.
+            attr (str):
+                The name of the attribute.
+            data (dict):
+                The raw input data dictionary.
+
+        Returns:
+            str:
+                The deserialized string value.
+
+        Raises:
+            PumpWoodObjectSavingException:
+                If the value is not a string.
+        """
+        # It is necessary to treat the string cases, at some implementation
+        # the value of the attribute will be set direcly on Python.
+        # It is necessary on those since the attribute will be a string
+        # on serialization.
         if isinstance(value, str):
             return value
         else:
