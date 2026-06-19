@@ -6,8 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [1.5.26] - 2026-06-19
+## [1.5.28] - 2026-06-19
+### Added
+- **get_base_filter_skip**: Shared helper in `query.aux` to read
+  `base_filter_skip` from the current Flask request.
 
+### Changed
+- **ValidateForeignKeyFieldMicroservice**: Pass `model_class` and
+  `base_filter_skip` to microservice `retrieve`; cache and replay any
+  `PumpWoodException` through `to_dict` / `raise_from_dict`.
+- **ValidateForeignKey Fields**: Use Marshmallow `Integer` instead of
+  `IntField`.
+- **BaseQueryABC**: Reuse `get_base_filter_skip` inside `get_skip_arg`.
+
+### Documentation
+- **README**: Expanded `pumpwood_flaskviews.fields` module docs and
+  added foreign key validation usage examples.
+- **README**: Clarified fail-soft (read) vs fail-hard (save validation)
+  foreign key behaviour.
+
+## [1.5.26] - 2026-06-19
 ### Added
 - **ValidateForeignKeyFieldLocal**: Integer foreign key field that validates
   user access to a related local model object via `default_query_get` on
