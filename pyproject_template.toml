@@ -8,9 +8,7 @@ license = { text = "BSD-3-Clause License" }
 authors = [
     { name = "Murabei Data Science", email = "a.baceti@murabei.com" }
 ]
-urls = {
-    Homepage = "https://github.com/Murabei-OpenSource-Codes/pumpwood-flaskviews"
-}
+urls = { Homepage = "https://github.com/Murabei-OpenSource-Codes/pumpwood-flaskviews" }
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",

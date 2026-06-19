@@ -1,6 +1,6 @@
 [project]
 name = "pumpwood-flaskviews"
-version = "1.5.25-b.0"
+version = "1.5.26-b.0"
 description = "Assist creation of flask views in Pumpwood format.."
 readme = "README.md"
 requires-python = ">=3.6,<4.0"
@@ -8,9 +8,7 @@ license = { text = "BSD-3-Clause License" }
 authors = [
     { name = "Murabei Data Science", email = "a.baceti@murabei.com" }
 ]
-urls = {
-    Homepage = "https://github.com/Murabei-OpenSource-Codes/pumpwood-flaskviews"
-}
+urls = { Homepage = "https://github.com/Murabei-OpenSource-Codes/pumpwood-flaskviews" }
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
