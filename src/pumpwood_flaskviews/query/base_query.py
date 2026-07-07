@@ -6,6 +6,7 @@ from flask import request
 from flask_sqlalchemy.query import Query
 from sqlalchemy.orm import DeclarativeBase
 from pumpwood_flaskviews.inspection import model_has_column
+from pumpwood_flaskviews.query.aux import get_base_filter_skip
 from pumpwood_flaskviews.auth import AuthFactory
 from pumpwood_communication.exceptions import (
     PumpWoodOtherException, PumpWoodQueryException)
@@ -81,7 +82,7 @@ class BaseQueryABC(ABC):
     def get_skip_arg(self) -> list[str]:
         """Retrieve skip base filter from URL."""
         # Try to load URL parameter as a JSON
-        request_base_filter_skip = request.args.get('base_filter_skip', '[]')
+        request_base_filter_skip = get_base_filter_skip()
         try:
             base_filter_skip = json.loads(request_base_filter_skip)
         except json.JSONDecodeError:

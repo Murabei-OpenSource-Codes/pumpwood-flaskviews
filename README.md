@@ -1,7 +1,7 @@
 # Pumpwood Flask Views
 Assists in the creation of Pumpwood views in Flask.
 
-<a href="https://github.com/Murabei-OpenSource-Codes/pumpwood-miscellaneous">
+<a href="https://github.com/Murabei-OpenSource-Codes/pumpwood-flaskviews">
   pumpwood-flaskviews
 </a>.
 
@@ -122,10 +122,73 @@ def flask_end_point():
 ```
 
 ## pumpwood_flaskviews.fields
-Extend SQLAlchemy fields for some common used fields in Pumpwood.
-- GeometryField: Serialize shapely geometry fields.
-- ChoiceField: Serialize sqlalchemy_utils ChoiceType fields.
+Extend Marshmallow fields for common Pumpwood serializer patterns.
 
+### General and audit fields
+- **GeometryField**: Serialize Shapely geometry fields.
+- **ChoiceField**: Serialize `sqlalchemy_utils.ChoiceType` fields.
+- **PrimaryKeyField**: Serialize primary keys as Base64 strings.
+- **CreatedByIdField**, **ModifiedByIdField**, **CreatedAtField**,
+  **ModifiedAtField**: Audit fields with superuser overwrite support.
+- **EncryptedField**: Encrypt and decrypt sensitive values.
+- **ReadOnlyChoiceField**: Choice field restricted on deserialize.
+- **RowPermissionField**: Integer field for row-permission values.
+
+### Related object fields (read-only, fail-soft)
+- **LocalForeignKeyField**: Serialize a local FK using
+  `default_query_get`.
+- **LocalRelatedField**: Serialize related local objects as a list.
+- **MicroserviceForeignKeyField**: Serialize a remote FK using
+  microservice `list_one`.
+- **MicroserviceRelatedField**: Serialize related remote objects as a
+  list.
+- **AutoFillFieldLocal**, **AutoFillFieldMicroservice**: Fill a field
+  from a related object on save.
+
+These read-only related fields use the fail-soft pattern documented
+below. They return error metadata inside the field when a related
+object cannot be retrieved.
+
+### Foreign key validation fields (write, fail-hard)
+- **ValidateForeignKeyFieldLocal**: Integer FK field for local models.
+  On deserialize it validates that the referenced row exists and is
+  visible through `default_query_get` (row-permission filters apply).
+- **ValidateForeignKeyFieldMicroservice**: Integer FK field for remote
+  models. On deserialize it validates access through microservice
+  `retrieve`, forwarding request auth and `base_filter_skip`.
+
+Use validation fields on save serializers when the client sends a raw
+integer foreign key. Use read-only related fields on retrieve/list
+serializers when the API must embed related object data.
+
+Example for a local model:
+
+```python
+from pumpwood_flaskviews.fields import ValidateForeignKeyFieldLocal
+
+
+class JobSerializer(PumpWoodSerializer):
+    person_id = ValidateForeignKeyFieldLocal(
+        model_class='models.Person')
+```
+
+Example for a remote model:
+
+```python
+from pumpwood_flaskviews.fields import (
+    ValidateForeignKeyFieldMicroservice)
+
+
+class TaskSerializer(PumpWoodSerializer):
+    owner_id = ValidateForeignKeyFieldMicroservice(
+        model_class='Person',
+        not_logged_microservice=microservice)
+```
+
+When validation fails, pumpwood-communication exceptions are raised
+(for example `PumpWoodObjectDoesNotExist`, `PumpWoodForbidden`). The
+microservice field caches serialized errors in request scope and
+replays them with `raise_from_dict`.
 
 ## pumpwood_flaskviews.serializers
 Define a base serializer for pumpwood models which always return at least pk
@@ -337,11 +400,11 @@ class PersonView(PumpWoodFlaskView):
 
 
 ### Fail-Soft Serialization
-Pumpwood Flask Views implements a "fail-soft" pattern for related fields
-(`MicroserviceForeignKeyField`, `LocalRelatedField`, etc.). If a related
-object cannot be retrieved (e.g., due to a 404 Not Found or a 403 Forbidden
-error), the serializer will not crash. Instead, it returns a standardized
-error object within the field:
+Pumpwood Flask Views implements a "fail-soft" pattern for read-only
+related fields (`MicroserviceForeignKeyField`, `LocalRelatedField`,
+etc.). If a related object cannot be retrieved (for example 404 Not
+Found or 403 Forbidden), the serializer does not crash. Instead, it
+returns a standardized error object within the field:
 
 ```json
 {
@@ -358,4 +421,8 @@ This ensures that the main object can still be serialized and returned to
 the client even if some secondary relations are temporarily unavailable.
 Sensitive user information is stripped from these error returns and is
 only available in the server-side logs.
-```
+
+Validation fields (`ValidateForeignKeyFieldLocal`,
+`ValidateForeignKeyFieldMicroservice`) follow the opposite pattern on
+save: invalid or inaccessible foreign keys raise exceptions instead of
+returning embedded error metadata.

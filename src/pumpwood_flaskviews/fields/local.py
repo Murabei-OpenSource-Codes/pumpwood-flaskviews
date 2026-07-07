@@ -3,7 +3,7 @@ import copy
 from dataclasses import dataclass
 from loguru import logger
 from typing import List, Dict, Any, Union
-from marshmallow.fields import Field
+from marshmallow.fields import Field, Integer
 from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import Mapper, InstanceState
 from sqlalchemy.exc import NoInspectionAvailable
@@ -103,7 +103,7 @@ class LocalForeignKeyField(Field):
                 msg = (
                     "Serializer for {name} model_class argument must be a "
                     "string or FlaskPumpWoodBaseModel.").format(
-                        name=model_class)
+                        name=self.__class__.__name__)
                 raise exceptions.PumpWoodOtherException(message=msg)
 
         if not isinstance(complementary_source, (dict)):
@@ -519,3 +519,87 @@ class LocalRelatedField(Field):
             foreign_key=self.foreign_key,
             complementary_foreign_key=self.complementary_foreign_key,
             fields=self.fields)
+
+
+class ValidateForeignKeyFieldLocal(Integer):
+    """Integer FK field that validates user access to referenced object.
+
+    Deserializes the value as an integer primary key and checks that
+    the related row exists and is visible through default_query_get.
+    """
+
+    def __init__(self, *args, model_class: str | FlaskPumpWoodBaseModel,
+                 **kwargs):
+        """Class constructor.
+
+        Args:
+            model_class (str | FlaskPumpWoodBaseModel):
+                Local model class for the foreign key target. A string
+                import path avoids circular imports at app startup.
+            *args:
+                Positional arguments forwarded to IntField.
+            **kwargs:
+                Keyword arguments forwarded to IntField.
+        """
+        if not isinstance(model_class, str):
+            sqlalchemy_type = _get_sqlalchemy_type(obj=model_class)
+            if sqlalchemy_type != "class":
+                msg = (
+                    "Serializer for {name} model_class argument must be a "
+                    "string or FlaskPumpWoodBaseModel.").format(
+                        name=self.__class__.__name__)
+                raise exceptions.PumpWoodOtherException(message=msg)
+
+        self.model_class = None
+        self._pre_load_model_class = model_class
+        super().__init__(*args, **kwargs)
+
+    def _get_model_class(self) -> FlaskPumpWoodBaseModel:
+        """Load model class at serialization to avoid circular dependency.
+
+        Returns:
+            FlaskPumpWoodBaseModel:
+                Resolved model class for the foreign key target.
+        """
+        if self.model_class is None:
+            self.model_class = _import_function_by_string(
+                module=self._pre_load_model_class)
+        return self.model_class
+
+    def _validate_obj_access(self, object_pk: str | int) -> None:
+        """Validate if user has access to object.
+
+        Args:
+            object_pk (str | int):
+                Primary key of the related object.
+
+        Raises:
+            PumpWoodObjectDoesNotExist:
+                If the object was not found or is not accessible.
+        """
+        model_class = self._get_model_class()
+        model_class.default_query_get(
+            pk=object_pk, raise_error=True, use_cache=True)
+
+    def _deserialize(self, value, attr, data, **kwargs):
+        """Deserialize integer FK and validate related object access.
+
+        Args:
+            value:
+                Raw input value for the field.
+            attr (str):
+                Attribute name on the schema.
+            data (dict):
+                Full input data dictionary.
+
+        Returns:
+            int:
+                Deserialized primary key value.
+
+        Raises:
+            PumpWoodObjectDoesNotExist:
+                If the related object was not found or is not accessible.
+        """
+        val = super()._deserialize(value, attr, data, **kwargs)
+        self._validate_obj_access(object_pk=val)
+        return val
