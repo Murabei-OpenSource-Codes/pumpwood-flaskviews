@@ -4,7 +4,8 @@ from typing import Any
 from dataclasses import dataclass
 from pumpwood_communication.type import (
     PumpwoodDataclassMixin, BulkSaveMicroserviceAutoFillField,
-    BulkSaveLocalAutoFillField)
+    BulkSaveLocalAutoFillField, BulkSaveDefaultField,
+    MixinBulkSaveField)
 from pumpwood_communication.microservices import PumpWoodMicroService
 from pumpwood_communication.exceptions import (
     PumpWoodOtherException, PumpWoodDataLoadingException)
@@ -50,10 +51,12 @@ class FillBulkSaveFields:
         for field in fields:
             if isinstance(field, BulkSaveMicroserviceAutoFillField):
                 data = data.pipe(
-                    cls.autofill_microservice, field=field,
+                    cls.fill_auto_microservice, field=field,
                     microservice=microservice)
             elif isinstance(field, BulkSaveLocalAutoFillField):
-                data = data.pipe(cls.autofill_local, field=field)
+                data = data.pipe(cls.fill_auto_local, field=field)
+            elif isinstance(field, BulkSaveDefaultField):
+                data = data.pipe(cls.fill_default, field=field)
         return cls.validate_data(data=data, fields=fields)
 
     @classmethod
@@ -101,9 +104,9 @@ class FillBulkSaveFields:
             hash_dict=hash_dict, value=value)
 
     @classmethod
-    def autofill_local(cls, data: pd.DataFrame,
-                       field: BulkSaveLocalAutoFillField) -> pd.DataFrame:
-        """Add column using autofill."""
+    def fill_auto_local(cls, data: pd.DataFrame,
+                        field: BulkSaveLocalAutoFillField) -> pd.DataFrame:
+        """Fill column using local autofill."""
         unique_fk_columns = data[field.object_fk_column].unique().tolist()
         map_fk_fill_data = {}
         missing_cache = []
@@ -155,11 +158,11 @@ class FillBulkSaveFields:
         return data
 
     @classmethod
-    def autofill_microservice(cls, data: pd.DataFrame,
-                              field: BulkSaveMicroserviceAutoFillField,
-                              microservice: PumpWoodMicroService
-                              ) -> pd.DataFrame:
-        """Add column using autofill."""
+    def fill_auto_microservice(cls, data: pd.DataFrame,
+                               field: BulkSaveMicroserviceAutoFillField,
+                               microservice: PumpWoodMicroService
+                               ) -> pd.DataFrame:
+        """Fill column using microservice autofill."""
         unique_fk_columns = data[field.object_fk_column].unique().tolist()
         map_fk_fill_data = {}
         missing_cache = []
@@ -202,6 +205,40 @@ class FillBulkSaveFields:
         data[field.field] = \
             data[field.object_fk_column].map(map_fk_fill_data)
         return data
+
+    @classmethod
+    def fill_default(cls, data: pd.DataFrame, field: BulkSaveDefaultField
+                    ) -> pd.DataFrame:
+        """Fill default values for the dataframe."""
+        if field.field not in data.columns:
+            data[field.field] = field.default
+        else:
+            data[field.field] = data[field.field].fillna(field.default)
+        return data
+
+    @classmethod
+    def _bulk_save_fields_for_payload(cls, fields: list) -> list:
+        """Serialize bulk save field definitions for exception payloads.
+
+        Args:
+            fields (list):
+                Bulk save field definitions from the view.
+
+        Returns:
+            list:
+                JSON-serializable field definitions.
+        """
+        payload_fields = []
+        for item in fields:
+            if isinstance(item, MixinBulkSaveField):
+                field_data = item.to_dict()
+                fill_model = field_data.get('fill_model_class')
+                if isinstance(fill_model, type):
+                    field_data['fill_model_class'] = fill_model.__name__
+                payload_fields.append(field_data)
+            else:
+                payload_fields.append(item)
+        return payload_fields
 
     @classmethod
     def validate_fks(cls, unique_fk_columns: list, map_fk_fill_data: dict,
@@ -267,8 +304,7 @@ class FillBulkSaveFields:
         """
         final_cols: list[str] = []
         for x in fields:
-            if isinstance(x, (BulkSaveMicroserviceAutoFillField,
-                              BulkSaveLocalAutoFillField)):
+            if isinstance(x, MixinBulkSaveField):
                 final_cols.append(x.field)
             else:
                 final_cols.append(x)
@@ -280,7 +316,10 @@ class FillBulkSaveFields:
                 "attribute at view, check implementation and correct it. "
                 "Actual values [{expected_cols_bulk_save}]")
             raise PumpWoodOtherException(
-                msg, payload={"expected_cols_bulk_save": fields})
+                msg, payload={
+                    "expected_cols_bulk_save": cls._bulk_save_fields_for_payload(  # NOQA
+                        fields=fields),
+                    "expected_column_names": final_cols})
 
         data_columns = set(data.columns)
         missing_cols = set(final_cols) - data_columns

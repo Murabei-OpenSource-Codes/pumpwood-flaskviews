@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.5.29] - 2026-07-07
+### Added
+- **BulkSaveDefaultField**: Support default-value columns on bulk save
+  through `FillBulkSaveFields.fill_default`.
+- **_bulk_save_fields_for_payload**: Helper to serialize bulk save field
+  definitions for JSON-safe exception payloads.
+
+### Changed
+- **FillBulkSaveFields**: Renamed `autofill_local` and
+  `autofill_microservice` to `fill_auto_local` and
+  `fill_auto_microservice`.
+- **validate_data**: Resolve column names from any `MixinBulkSaveField`
+  subtype, including `BulkSaveDefaultField`.
+
+### Fixed
+- **fill_default**: Use `field.field not in data.columns` instead of
+  `Index.contains`, which is not available on pandas column indexes.
+- **validate_data**: Prevent `unhashable type: 'BulkSaveDefaultField'`
+  when checking duplicate columns in `expected_cols_bulk_save`.
+- **Bulk save error payloads**: Convert SQLAlchemy model classes in
+  `fill_model_class` to class names so `jsonify(error.to_dict())` no
+  longer fails with unserializable `DeclarativeAttributeIntercept`
+  objects.
+
+
 ## [1.5.28] - 2026-06-19
 ### Added
 - **get_base_filter_skip**: Shared helper in `query.aux` to read
