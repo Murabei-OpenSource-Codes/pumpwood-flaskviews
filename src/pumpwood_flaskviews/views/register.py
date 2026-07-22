@@ -9,6 +9,9 @@ from pumpwood_communication import exceptions
 from pumpwood_database_error.psycopg2_error import TreatPsycopg2Error
 from pumpwood_database_error.sqlalchemy_error import TreatSQLAlchemyError
 
+# Local imports
+from pumpwood_flaskviews.exceptions import PumpWoodFlaskViewEndPointFoundError
+
 
 def register_pumpwood_view(app: object, view: object,
                            service_object: dict = None) -> None:
@@ -111,3 +114,4 @@ def register_pumpwood_view(app: object, view: object,
         response = jsonify(pump_exc.to_dict())
         response.status_code = pump_exc.status_code
         return response
+    

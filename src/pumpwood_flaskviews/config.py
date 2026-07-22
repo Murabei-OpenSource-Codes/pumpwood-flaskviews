@@ -1,8 +1,8 @@
 """Fetch enviroment variables used on pumpwood flaskviews."""
 import os
 
-INFO_CACHE_TIMEOUT = int(
-    os.getenv('PUMPWOOD_FLASKVIEWS__INFO_CACHE_TIMEOUT', 600))
+INFO_CACHE_EXPIRATION = int(
+    os.getenv('PUMPWOOD_FLASKVIEWS__INFO_CACHE_EXPIRATION', 600))
 """Config variable to ser cache associated with information data, such as
    options and points."""
 

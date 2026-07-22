@@ -12,7 +12,7 @@ from sqlalchemy.sql.expression import False_ as sql_false
 from sqlalchemy.sql.expression import True_ as sql_true
 from sqlalchemy_utils.types.choice import ChoiceType
 from pumpwood_i8n.singletons import pumpwood_i8n as _
-from pumpwood_flaskviews.config import INFO_CACHE_TIMEOUT
+from pumpwood_flaskviews.config import INFO_CACHE_EXPIRATION
 from pumpwood_communication.cache import default_cache
 from pumpwood_communication.type import (
     MISSING, AUTOINCREMENT, NOW, TODAY, ColumnInfo,
@@ -36,6 +36,8 @@ class AuxFillOptionsCacheHash(PumpwoodDataclassMixin):
     """Pk associated with objecto to get the autofill field data."""
     context: str = 'flaskviews--cls_fields_options'
     """Content of the file that will be returned at the action."""
+
+# TODO: Implement soft delete logic for delete many end-point
 
 
 class AuxFillOptions:
@@ -154,7 +156,7 @@ class AuxFillOptions:
         """Set information about the fields at the local cache."""
         return default_cache.set(
             hash_dict=hash_dict, value=data,
-            expire=INFO_CACHE_TIMEOUT)
+            expire=INFO_CACHE_EXPIRATION)
 
     @classmethod
     def get_model_class_name(cls, model_class) -> str:
