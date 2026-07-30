@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.5.31] - 2026-07-30
+### Fixed
+- **FillBulkSaveFields**: Raise `PumpWoodDataLoadingException` when bulk
+  save autofill `object_fk_column` is missing from payload data, instead
+  of an untreated `KeyError`.
+- **_validate_object_fk_column**: Hint when `object_fk_column` matches the
+  autofill target field, a common misconfiguration.
+
+
 ## [1.5.29] - 2026-07-07
 ### Added
 - **BulkSaveDefaultField**: Support default-value columns on bulk save

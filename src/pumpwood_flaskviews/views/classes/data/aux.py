@@ -104,9 +104,61 @@ class FillBulkSaveFields:
             hash_dict=hash_dict, value=value)
 
     @classmethod
+    def _validate_object_fk_column(
+            cls, data: pd.DataFrame, field: MixinBulkSaveField) -> None:
+        """Validate autofill foreign key column on bulk save payload.
+
+        Args:
+            data (pd.DataFrame):
+                Bulk save data to fill the fields.
+            field (MixinBulkSaveField):
+                Autofill field definition from the view.
+
+        Raises:
+            PumpWoodDataLoadingException:
+                If object_fk_column is missing or not present on data.
+        """
+        object_fk_column = getattr(field, 'object_fk_column', None)
+        if object_fk_column is None:
+            msg = (
+                "Bulk save autofill for field [{field_name}] requires "
+                "'object_fk_column', but it is not configured. Check "
+                "'expected_cols_bulk_save' on the view.")
+            raise PumpWoodDataLoadingException(
+                msg.format(field_name=field.field),
+                payload={
+                    "field_name": field.field,
+                    "object_fk_column": object_fk_column})
+
+        if object_fk_column not in data.columns:
+            same_as_target = object_fk_column == field.field
+            misconfig_hint = (
+                " 'object_fk_column' matches the autofill target field; "
+                "it should reference a foreign key column present in the "
+                "bulk save payload."
+                if same_as_target else "")
+            msg = (
+                "Bulk save autofill for field [{field_name}] requires "
+                "foreign key column [{object_fk_column}] on the payload, "
+                "but it is missing from bulk save data.{misconfig_hint} "
+                "Check 'expected_cols_bulk_save' and include the FK "
+                "column in the payload or fix 'object_fk_column'.")
+            raise PumpWoodDataLoadingException(
+                msg.format(
+                    field_name=field.field,
+                    object_fk_column=object_fk_column,
+                    misconfig_hint=misconfig_hint),
+                payload={
+                    "field_name": field.field,
+                    "object_fk_column": object_fk_column,
+                    "data_columns": list(data.columns),
+                    "same_as_target_field": same_as_target})
+
+    @classmethod
     def fill_auto_local(cls, data: pd.DataFrame,
                         field: BulkSaveLocalAutoFillField) -> pd.DataFrame:
         """Fill column using local autofill."""
+        cls._validate_object_fk_column(data=data, field=field)
         unique_fk_columns = data[field.object_fk_column].unique().tolist()
         map_fk_fill_data = {}
         missing_cache = []
@@ -163,6 +215,7 @@ class FillBulkSaveFields:
                                microservice: PumpWoodMicroService
                                ) -> pd.DataFrame:
         """Fill column using microservice autofill."""
+        cls._validate_object_fk_column(data=data, field=field)
         unique_fk_columns = data[field.object_fk_column].unique().tolist()
         map_fk_fill_data = {}
         missing_cache = []
