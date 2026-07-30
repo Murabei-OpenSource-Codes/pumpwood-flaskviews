@@ -26,7 +26,7 @@ from pumpwood_flaskviews.inspection import model_has_column
 from pumpwood_flaskviews.query import SqlalchemyQueryMisc
 from pumpwood_flaskviews.auth import AuthFactory
 from pumpwood_flaskviews.action import LoadActionParameters
-from pumpwood_flaskviews.config import INFO_CACHE_TIMEOUT
+from pumpwood_flaskviews.config import INFO_CACHE_EXPIRATION
 from pumpwood_i8n.singletons import pumpwood_i8n as _
 
 
@@ -198,7 +198,7 @@ class PumpWoodFlaskView(View):
             default_cache.set(
                 hash_dict=hash_dict,
                 value=available_microservices,
-                expire=INFO_CACHE_TIMEOUT)
+                expire=INFO_CACHE_EXPIRATION)
             return available_microservices
 
     def get_session(self):
@@ -993,6 +993,7 @@ class PumpWoodFlaskView(View):
             bool:
                 Always returns True if the operation succeeds.
         """
+        # TODO: Implement soft delete logic for delete many end-point
         session = self.get_session()
         try:
             # User will only be abble to delete objects associated with his
@@ -1435,7 +1436,8 @@ class PumpWoodFlaskView(View):
     def aggregate(self, group_by: List[str], agg: dict,
                   filter_dict: dict = None, exclude_dict: dict = None,
                   order_by: List[str] = None, limit: int = None,
-                  format: str = 'list', **kwargs) -> Union[dict, list]:
+                  show_deleted: bool = False, format: str = 'list',
+                  **kwargs) -> Union[dict, list]:
         """Aggregate database information using group_by and functions.
 
         Args:
@@ -1453,6 +1455,8 @@ class PumpWoodFlaskView(View):
                 Ordering for the aggregated results.
             limit (int):
                 Maximum number of results to return.
+            show_deleted (bool):
+                If True, include deleted objects in the results.
             format (str):
                 Pandas dictionary format (e.g., 'list', 'records').
             **kwargs:
@@ -1473,7 +1477,7 @@ class PumpWoodFlaskView(View):
                 if first == "deleted":
                     any_delete = True
                     break
-            if not any_delete:
+            if not any_delete and not show_deleted:
                 exclude_dict["deleted"] = True
 
         base_query = self._add_default_filter()

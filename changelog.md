@@ -6,6 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.5.34] - 2026-07-30
+### Documentation
+- **FillBulkSaveFields**: Expand Google-style docstrings and `Raises` on
+  bulk-save helpers; add `BulkSaveField` type alias.
+- **validate_fks**: Correct `unique_fk_columns` argument type in
+  docstring (list, not `pd.DataFrame`).
+- **PumpWoodDataFlaskView.bulk_save**: Document
+  `PumpWoodDataLoadingException` and `PumpWoodOtherException` in
+  `Raises`.
+- **config**: Fix module and constant docstring typos.
+
+
+## [1.5.32] - 2026-07-30
+### Fixed
+- **FillBulkSaveFields**: Raise `PumpWoodDataLoadingException` when bulk
+  save autofill `object_fk_column` is missing from payload data, instead
+  of an untreated `KeyError`.
+- **_validate_object_fk_column**: Hint when `object_fk_column` matches the
+  autofill target field, a common misconfiguration.
+
+### Documentation
+- **README**: Add objective section, quick start, bulk save configuration,
+  `aggregate` endpoint, and correct `INFO_CACHE_EXPIRATION` env var name.
+
+
+## [1.5.30] - 2026-07-22
+### Changed
+- **config**: Rename `INFO_CACHE_TIMEOUT` to `INFO_CACHE_EXPIRATION`; env
+  var is now `PUMPWOOD_FLASKVIEWS__INFO_CACHE_EXPIRATION`.
+- **aggregate**: Add `show_deleted` parameter to include soft-deleted rows.
+
+
 ## [1.5.29] - 2026-07-07
 ### Added
 - **BulkSaveDefaultField**: Support default-value columns on bulk save

@@ -1,4 +1,4 @@
-"""Module with auxiliary functions for data views on Pumpwood."""
+"""Orchestrate bulk-save column filling for Pumpwood data views."""
 import pandas as pd
 from typing import Any
 from dataclasses import dataclass
@@ -11,6 +11,14 @@ from pumpwood_communication.exceptions import (
     PumpWoodOtherException, PumpWoodDataLoadingException)
 from pumpwood_flaskviews.cache import PumpwoodFlaskGDiskCache
 
+BulkSaveField = (
+    str
+    | BulkSaveLocalAutoFillField
+    | BulkSaveMicroserviceAutoFillField
+    | BulkSaveDefaultField
+)
+"""Column name or bulk-save field definition for expected_cols_bulk_save."""
+
 
 @dataclass
 class BulkSaveAutoFillFieldCacheHash(PumpwoodDataclassMixin):
@@ -19,7 +27,7 @@ class BulkSaveAutoFillFieldCacheHash(PumpwoodDataclassMixin):
     model_class: str
     """Model class for the autofill field."""
     pk: str | int
-    """Pk associated with objecto to get the autofill field data."""
+    """Pk associated with object to get the autofill field data."""
     field: str
     """Field to extract data to fill object."""
     context: str = 'flaskviews--bulk-save-auto-fill'
@@ -30,23 +38,31 @@ class FillBulkSaveFields:
     """Fill bulk save fields."""
 
     @classmethod
-    def run(cls, data: pd.DataFrame, fields: list,
+    def run(
+            cls, data: pd.DataFrame,
+            fields: list[BulkSaveField],
             microservice: PumpWoodMicroService) -> pd.DataFrame:
-        """Fill the auto fill columns on bulk save.
+        """Fill bulk-save columns and validate the final payload shape.
 
         Args:
             data (pd.DataFrame):
                 Bulk save data to fill the fields.
-            fields (list):
-                List of fields at the dataframe to be returned. Fields of
-                type BulkSaveMicroserviceAutoFillField and
-                BulkSaveLocalAutoFillField.
+            fields (list[BulkSaveField]):
+                View `expected_cols_bulk_save` entries: plain column
+                names, autofill fields, or default-value fields.
             microservice (PumpWoodMicroService):
-                Object of the type PumpWoodMicroService.
+                Microservice used for remote autofill lookups.
 
         Returns:
-            Return the dataframe with the columns filled with autofill
-            data.
+            pd.DataFrame:
+                Dataframe with filled columns restricted to the
+                expected bulk-save schema.
+
+        Raises:
+            PumpWoodDataLoadingException:
+                If autofill configuration or final columns are invalid.
+            PumpWoodOtherException:
+                If `expected_cols_bulk_save` contains duplicate columns.
         """
         for field in fields:
             if isinstance(field, BulkSaveMicroserviceAutoFillField):
@@ -60,43 +76,45 @@ class FillBulkSaveFields:
         return cls.validate_data(data=data, fields=fields)
 
     @classmethod
-    def get_field_cache(cls, model_class: str, pk: int, field: str) -> Any:
-        """Get cache for field and value.
+    def get_field_cache(
+            cls, model_class: str, pk: str | int, field: str) -> Any:
+        """Get a cached autofill value for one related object.
 
         Args:
             model_class (str):
-                Model class of the object that will be used to fill the
-                values.
-            pk (int):
-                Integer value associated with id.
+                Model class of the object used to fill values.
+            pk (str | int):
+                Primary key of the related object.
             field (str):
-                Field that should be returned value to fill the data.
+                Attribute name to read from the cached object.
 
         Returns:
-            Return the cached field.
+            Any:
+                Cached value, or None when cache is empty.
         """
         hash_dict = BulkSaveAutoFillFieldCacheHash(
             model_class=model_class, pk=pk, field=field)
         return PumpwoodFlaskGDiskCache.get(hash_dict)
 
     @classmethod
-    def set_field_cache(cls, model_class: str, pk: int, field: str,
-                        value: Any) -> Any:
-        """Get cache for field and value.
+    def set_field_cache(
+            cls, model_class: str, pk: str | int, field: str,
+            value: Any) -> Any:
+        """Set a cached autofill value for one related object.
 
         Args:
             model_class (str):
-                Model class of the object that will be used to fill the
-                values.
-            pk (int):
-                Integer value associated with id.
+                Model class of the object used to fill values.
+            pk (str | int):
+                Primary key of the related object.
             field (str):
-                Field that should be returned value to fill the data.
+                Attribute name stored in the cache entry.
             value (Any):
-                Value to be set on cache from fill value.
+                Value to store for later autofill lookups.
 
         Returns:
-            Return the cached field.
+            Any:
+                Value returned by the cache backend after storing.
         """
         hash_dict = BulkSaveAutoFillFieldCacheHash(
             model_class=model_class, pk=pk, field=field)
@@ -104,9 +122,80 @@ class FillBulkSaveFields:
             hash_dict=hash_dict, value=value)
 
     @classmethod
+    def _validate_object_fk_column(
+            cls, data: pd.DataFrame, field: MixinBulkSaveField) -> None:
+        """Validate autofill foreign key column on bulk save payload.
+
+        Args:
+            data (pd.DataFrame):
+                Bulk save data to fill the fields.
+            field (MixinBulkSaveField):
+                Autofill field definition from the view.
+
+        Raises:
+            PumpWoodDataLoadingException:
+                If object_fk_column is missing or not present on data.
+        """
+        object_fk_column = getattr(field, 'object_fk_column', None)
+        if object_fk_column is None:
+            msg = (
+                "Bulk save autofill for field [{field_name}] requires "
+                "'object_fk_column', but it is not configured. Check "
+                "'expected_cols_bulk_save' on the view.")
+            raise PumpWoodDataLoadingException(
+                msg.format(field_name=field.field),
+                payload={
+                    "field_name": field.field,
+                    "object_fk_column": object_fk_column})
+
+        if object_fk_column not in data.columns:
+            same_as_target = object_fk_column == field.field
+            misconfig_hint = (
+                " 'object_fk_column' matches the autofill target field; "
+                "it should reference a foreign key column present in the "
+                "bulk save payload."
+                if same_as_target else "")
+            msg = (
+                "Bulk save autofill for field [{field_name}] requires "
+                "foreign key column [{object_fk_column}] on the payload, "
+                "but it is missing from bulk save data.{misconfig_hint} "
+                "Check 'expected_cols_bulk_save' and include the FK "
+                "column in the payload or fix 'object_fk_column'.")
+            raise PumpWoodDataLoadingException(
+                msg.format(
+                    field_name=field.field,
+                    object_fk_column=object_fk_column,
+                    misconfig_hint=misconfig_hint),
+                payload={
+                    "field_name": field.field,
+                    "object_fk_column": object_fk_column,
+                    "data_columns": list(data.columns),
+                    "same_as_target_field": same_as_target})
+
+    @classmethod
     def fill_auto_local(cls, data: pd.DataFrame,
                         field: BulkSaveLocalAutoFillField) -> pd.DataFrame:
-        """Fill column using local autofill."""
+        """Fill one column from a local related model on bulk save.
+
+        Args:
+            data (pd.DataFrame):
+                Bulk save payload before the target column is filled.
+            field (BulkSaveLocalAutoFillField):
+                Local autofill definition from the view.
+
+        Returns:
+            pd.DataFrame:
+                Input dataframe with `field.field` populated from the
+                related model.
+
+        Raises:
+            PumpWoodDataLoadingException:
+                If `object_fk_column` is missing from the payload or
+                related keys cannot be resolved.
+            PumpWoodOtherException:
+                If the related model does not expose `fill_col`.
+        """
+        cls._validate_object_fk_column(data=data, field=field)
         unique_fk_columns = data[field.object_fk_column].unique().tolist()
         map_fk_fill_data = {}
         missing_cache = []
@@ -162,7 +251,27 @@ class FillBulkSaveFields:
                                field: BulkSaveMicroserviceAutoFillField,
                                microservice: PumpWoodMicroService
                                ) -> pd.DataFrame:
-        """Fill column using microservice autofill."""
+        """Fill one column from a remote model on bulk save.
+
+        Args:
+            data (pd.DataFrame):
+                Bulk save payload before the target column is filled.
+            field (BulkSaveMicroserviceAutoFillField):
+                Remote autofill definition from the view.
+            microservice (PumpWoodMicroService):
+                Microservice used to fetch related object values.
+
+        Returns:
+            pd.DataFrame:
+                Input dataframe with `field.field` populated from the
+                related model.
+
+        Raises:
+            PumpWoodDataLoadingException:
+                If `object_fk_column` is missing from the payload or
+                related keys cannot be resolved.
+        """
+        cls._validate_object_fk_column(data=data, field=field)
         unique_fk_columns = data[field.object_fk_column].unique().tolist()
         map_fk_fill_data = {}
         missing_cache = []
@@ -209,7 +318,18 @@ class FillBulkSaveFields:
     @classmethod
     def fill_default(cls, data: pd.DataFrame, field: BulkSaveDefaultField
                     ) -> pd.DataFrame:
-        """Fill default values for the dataframe."""
+        """Apply a default value to one bulk-save column.
+
+        Args:
+            data (pd.DataFrame):
+                Bulk save payload before defaults are applied.
+            field (BulkSaveDefaultField):
+                Default-value definition from the view.
+
+        Returns:
+            pd.DataFrame:
+                Input dataframe with missing or null values filled.
+        """
         if field.field not in data.columns:
             data[field.field] = field.default
         else:
@@ -217,11 +337,12 @@ class FillBulkSaveFields:
         return data
 
     @classmethod
-    def _bulk_save_fields_for_payload(cls, fields: list) -> list:
+    def _bulk_save_fields_for_payload(
+            cls, fields: list[BulkSaveField]) -> list:
         """Serialize bulk save field definitions for exception payloads.
 
         Args:
-            fields (list):
+            fields (list[BulkSaveField]):
                 Bulk save field definitions from the view.
 
         Returns:
@@ -244,25 +365,23 @@ class FillBulkSaveFields:
     def validate_fks(cls, unique_fk_columns: list, map_fk_fill_data: dict,
                      field_name: str, related_model_name: str,
                      raise_error: bool = True) -> None:
-        """Validate data from the filled dataframe.
+        """Validate autofill foreign-key coverage for one column.
 
         Args:
-            unique_fk_columns (pd.DataFrame):
-                Dataframe to be validated and have the columns filtered.
+            unique_fk_columns (list):
+                Distinct foreign-key values present on the payload.
             map_fk_fill_data (dict):
-                Dictionary that will be used to map values from foreign
-                key and associated value.
+                Mapping from foreign-key value to fill value.
             field_name (str):
-                Name of the field that will be used on filling.
+                Target bulk-save column being filled.
             related_model_name (str):
-                Name associated with related model.
+                Related model queried for autofill values.
             raise_error (bool):
-                If false the validation will be skiped.
+                When False, skip raising on missing related keys.
 
         Raises:
             PumpWoodDataLoadingException:
-                Raise exception if foreign key columns were not found on
-                related table.
+                If related keys from the payload were not found.
         """
         set_of_map_fks = set(list(map_fk_fill_data.keys()))
         set_unique_fk_columns = set(unique_fk_columns)
@@ -292,15 +411,26 @@ class FillBulkSaveFields:
         return None
 
     @classmethod
-    def validate_data(cls, data: pd.DataFrame, fields: list) -> pd.DataFrame:
-        """Validate data from the filled dataframe.
+    def validate_data(
+            cls, data: pd.DataFrame,
+            fields: list[BulkSaveField]) -> pd.DataFrame:
+        """Validate and restrict bulk-save data to expected columns.
 
         Args:
             data (pd.DataFrame):
-                Dataframe to be validated and have the columns filtered.
-            fields (list):
-                Field that should be present on the final bulk save
-                dataframe.
+                Filled bulk-save dataframe.
+            fields (list[BulkSaveField]):
+                View `expected_cols_bulk_save` definitions.
+
+        Returns:
+            pd.DataFrame:
+                Input dataframe restricted to expected columns.
+
+        Raises:
+            PumpWoodOtherException:
+                If duplicate expected column names are configured.
+            PumpWoodDataLoadingException:
+                If required columns are missing after filling.
         """
         final_cols: list[str] = []
         for x in fields:
