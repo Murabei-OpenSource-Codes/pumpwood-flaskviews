@@ -195,6 +195,10 @@ class PumpWoodDataFlaskView(PumpWoodFlaskView):
         Raises:
             PumpWoodException:
                 If bulk saving is not enabled for the view.
+            PumpWoodDataLoadingException:
+                If autofill configuration or payload columns are invalid.
+            PumpWoodOtherException:
+                If `expected_cols_bulk_save` contains duplicate columns.
         """
         session = self.get_session()
 

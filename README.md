@@ -1,4 +1,5 @@
 # Pumpwood Flask Views
+
 Assists in the creation of Pumpwood views in Flask.
 
 <a href="https://github.com/Murabei-OpenSource-Codes/pumpwood-flaskviews">
@@ -13,13 +14,70 @@ Assists in the creation of Pumpwood views in Flask.
   </a> which has a symbiotic relation with ants (Murabei)
 </p>
 
-# Description
+## Objective and motivation
+
+Flask view layer for Pumpwood microservices: CRUD routes, serializers,
+row-permission filters, file storage, and data-view endpoints (pivot,
+bulk save).
+
+### Why this exists
+
+Pumpwood services share the same REST patterns (list, retrieve, save,
+actions, options). This package implements those patterns once so each
+Flask app registers model views instead of reimplementing routing,
+auth, and serialization.
+
+### How it is used
+
+Import view base classes, define a subclass with `model_class` and
+`serializer`, then register routes with `register_pumpwood_view`. Data
+lake and estimation workers use `PumpWoodDataFlaskView` for high-volume
+bulk insert and pivot queries.
+
+### Scope
+
+Covers Flask views, Marshmallow fields, and query helpers. Database
+models, workers, and front-end clients live in sibling repositories.
+
+## Quick start
+
+Install from the Murabei package index (Poetry example):
+
+```bash
+poetry add pumpwood-flaskviews
+```
+
+Register a view on the Flask app:
+
+```python
+from pumpwood_flaskviews.views import PumpWoodFlaskView
+from pumpwood_flaskviews.views.register import register_pumpwood_view
+
+
+class PersonView(PumpWoodFlaskView):
+    description = "Person"
+    dimensions = {"service": "my-service", "type": "person"}
+    db = db
+    model_class = Person
+    serializer = PersonSerializer
+    microservice = microservice
+    storage_object = storage_object
+
+
+register_pumpwood_view(app=app, view=PersonView.as_view())
+```
+
+## License
+
+BSD-3-Clause License. See repository metadata and `pyproject.toml`.
+
+## Description
 This package assists in the creation of views in Flask using the Pumpwood pattern.
 
-# Enviroment variables
-- **PUMPWOOD_FLASKVIEWS__INFO_CACHE_TIMEOUT (int):** Default to 10 minutes (600),
-  this cache timeout is used for some how static information on the system such
-  as description of the fields and it's components
+## Environment variables
+- **PUMPWOOD_FLASKVIEWS__INFO_CACHE_EXPIRATION (int):** Default 10 minutes
+  (600). Cache TTL for relatively static metadata such as field
+  descriptions and fill options.
 - **PUMPWOOD_FLASKVIEWS__SERIALIZER_FK_CACHE_TIMEOUT (int):** Default to 5
   minutes (300), this cache timeout is used to reduce microservice call to
   bring foreign_key objects that might be present on other services on retrieve
@@ -327,6 +385,9 @@ It is possible to modify function `get_gui_readonly` to make list_fields to adap
 - fill_options (/rest/[model_class]/options/): Pass an incomplete object as
     post payload and receives the validation of the fields and update the
     choice possibilities.
+- aggregate (/rest/[model_class]/aggregate/): Group and aggregate rows with
+    pandas. Accepts `show_deleted` to include soft-deleted rows when the
+    model has a `deleted` column.
 
 <b>PumpWoodDataFlaskView</b>
 - Same as PumpWoodFlaskView...
@@ -334,6 +395,45 @@ It is possible to modify function `get_gui_readonly` to make list_fields to adap
     instead of using serializers use pandas data frame and parse result with
     to_dict. It is possible to pivot data using the columns.
 - bulk_save (/rest/[model_class]/bulk-save/): Bulk save data on database.
+  Requires `expected_cols_bulk_save` on the view (see below).
+
+#### Bulk save configuration
+
+Set `expected_cols_bulk_save` on `PumpWoodDataFlaskView` to declare
+columns sent in the payload and columns filled server-side before
+`bulk_insert_mappings`. Plain strings are pass-through columns from
+the client. Use typed entries from `pumpwood_communication.type`:
+
+- **BulkSaveLocalAutoFillField**: Fill a column from a local related
+  model. `object_fk_column` must be a column **present in the payload**
+  (for example `datainput_origin_id`), not the target field being
+  filled.
+- **BulkSaveMicroserviceAutoFillField**: Same pattern using a remote
+  model through the view microservice.
+- **BulkSaveDefaultField**: Apply a default when the column is missing
+  or null.
+
+Example:
+
+```python
+from pumpwood_communication.type import (
+    BulkSaveDefaultField, BulkSaveLocalAutoFillField)
+
+
+class DataBaseVariableView(PumpWoodDataFlaskView):
+    expected_cols_bulk_save = [
+        BulkSaveLocalAutoFillField(
+            field='row_permission_id',
+            object_fk_column='datainput_origin_id',
+            fill_model_class=DataInputDatabaseVariable,
+            fill_col='row_permission_id'),
+        BulkSaveDefaultField(field='deleted', default=False),
+        'time', 'modeling_unit_id', 'value', 'datainput_origin_id',
+    ]
+```
+
+Misconfigured autofill (missing `object_fk_column` on the payload)
+raises `PumpWoodDataLoadingException` with column hints in the payload.
 
 <b>PumpWoodDimensionsFlaskView</b>
 - Same as PumpWoodFlaskView...
