@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.5.36] - 2026-08-20
+### Added
+- **AutoFillFieldLocal**, **AutoFillFieldMicroservice**: Optional
+  `apply_user_permission` flag to enforce row-permission filters on
+  autofill lookups (`default_query_get` locally; request `auth_header`
+  on microservice `retrieve`).
+
+### Changed
+- **AutoFillFieldCacheHash**: Include `authorization_token` and
+  `apply_user_permission` in the cache key so permission-scoped lookups
+  do not reuse unfiltered cache entries.
+- **AutoFillFieldMicroservice**: Raise `PumpWoodOtherException` when
+  `apply_user_permission=True` and the microservice client already has
+  credentials set.
+
+### Documentation
+- Expanded Google Style docstrings and `| None` type hints across
+  autofill, fields, model, query, auth, serializers, and fill_options
+  modules.
+
+
 ## [1.5.35] - 2026-08-19
 ### Changed
 - **config** (breaking): Rename cache config constants and env vars to

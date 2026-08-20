@@ -200,7 +200,11 @@ Extend Marshmallow fields for common Pumpwood serializer patterns.
 - **MicroserviceRelatedField**: Serialize related remote objects as a
   list.
 - **AutoFillFieldLocal**, **AutoFillFieldMicroservice**: Fill a field
-  from a related object on save.
+  from a related object on save. Set `apply_user_permission=True` to
+  enforce row-permission filters on the lookup (`default_query_get`
+  locally; request `auth_header` on microservice `retrieve`). For
+  microservice autofill with user permission, use a client without
+  credentials so the current request token is forwarded.
 
 These read-only related fields use the fail-soft pattern documented
 below. They return error metadata inside the field when a related
@@ -246,6 +250,28 @@ When validation fails, pumpwood-communication exceptions are raised
 (for example `PumpWoodObjectDoesNotExist`, `PumpWoodForbidden`). The
 microservice field caches serialized errors in request scope and
 replays them with `raise_from_dict`.
+
+Example for autofill with row-permission enforcement:
+
+```python
+from pumpwood_flaskviews.fields import (
+    AutoFillFieldLocal, AutoFillFieldMicroservice)
+
+
+class JobSerializer(PumpWoodSerializer):
+    row_permission_id = AutoFillFieldLocal(
+        model_class='models.DataInput',
+        source='datainput_origin_id',
+        fill_field='row_permission_id',
+        apply_user_permission=True)
+
+    owner_name = AutoFillFieldMicroservice(
+        microservice=anonymous_microservice,
+        model_class='Person',
+        source='owner_id',
+        fill_field='name',
+        apply_user_permission=True)
+```
 
 ## pumpwood_flaskviews.serializers
 Define a base serializer for pumpwood models which always return at least pk
@@ -379,10 +405,10 @@ It is possible to modify function `get_gui_readonly` to make list_fields to adap
   model_class.
 - execute_action (/rest/[model_class]/actions/[action name]/[pk]): Run action
     over object pk.
-- search_options (/rest/[model_class]/options/): Retrieve information for
-    list fields and filters.
-- fill_options (/rest/[model_class]/options/): Pass an incomplete object as
-    post payload and receive field validation and updated choice
+- search_options (GET /rest/[model_class]/options/): Retrieve information
+    for list fields and filters.
+- fill_options (POST /rest/[model_class]/options/): Pass an incomplete
+    object as payload and receive field validation and updated choice
     possibilities. Callable serializer and SQLAlchemy defaults (`list`,
     `dict`, `now`) are normalized to JSON-safe values in responses.
 - aggregate (/rest/[model_class]/aggregate/): Group and aggregate rows with
