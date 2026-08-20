@@ -29,20 +29,20 @@ except ImportError:
 
 @dataclass
 class AuxFillOptionsCacheHash(PumpwoodDataclassMixin):
-    """Dictionary to create cache hash dict for AutoFillFieldLocal."""
+    """Cache hash components for fill_options field metadata."""
 
     model_class: str
-    """Model class for the autofill field."""
+    """Model class whose field metadata is being cached."""
     user_type: Literal['gui', 'api']
-    """Pk associated with objecto to get the autofill field data."""
+    """Client type requesting field options (GUI or API)."""
     context: str = 'flaskviews--cls_fields_options'
-    """Content of the file that will be returned at the action."""
+    """Context identifier for the cache entry."""
 
 # TODO: Implement soft delete logic for delete many end-point
 
 
 class AuxFillOptions:
-    """Help to extract information from fields on model class."""
+    """Extract serializer and model metadata for fill_options endpoints."""
 
     HASH_DICT = {
         "context": "pumpwood_flaskviews",
@@ -56,24 +56,23 @@ class AuxFillOptions:
 
     @classmethod
     def run(cls, model_class: object, serializer,
-            view_file_fields: dict = None,
+            view_file_fields: dict | None = None,
             user_type: Literal['api', 'gui'] = 'api') -> dict[str, dict]:
-        """Extract the information.
+        """Build fill_options metadata for all serializer fields.
 
         Args:
-            model_class:
-                Model class that information from the fields will be
-                retrieved.
+            model_class (object):
+                SQLAlchemy model class for the serializer.
             serializer:
-                The class of the serializer used for this models class.
-            view_file_fields (dict):
-                View associated file fields.
+                Serializer class bound to ``model_class``.
+            view_file_fields (dict | None):
+                File-field metadata from the view layer.
             user_type (Literal['api', 'gui']):
-                User type that resquest the field type.
+                Client type requesting field options.
 
         Returns:
-            Return a dictonary with keys of the fields and values a dictonary
-            with description o the column.
+            dict[str, dict]:
+                Field names mapped to column metadata dictionaries.
         """
         model_class_name = cls.get_model_class_name(
             model_class=model_class)

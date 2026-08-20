@@ -79,8 +79,8 @@ class AuthFactory:
                 HTTP headers containing the Authorization token.
 
         Returns:
-            dict:
-                A list of row permission objects assigned to the user.
+            list:
+                Row permission records assigned to the user.
 
         Raises:
             PumpWoodException:
@@ -109,8 +109,12 @@ class AuthFactory:
         return resp_data['result']
 
     @classmethod
-    def set_server_url(cls, server_url: str = None):
+    def set_server_url(cls, server_url: str | None = None):
         """Set the authorization server URL.
+
+        Args:
+            server_url (str | None):
+                Deprecated. Ignored; use ``MICROSERVICE_URL`` instead.
 
         .. warning::
             This method is deprecated. Use the `MICROSERVICE_URL`
@@ -127,7 +131,16 @@ class AuthFactory:
 
     @classmethod
     def pumpwood_auth(cls, f):
-        """Decorate function to check authorization."""
+        """Decorate a view function to enforce Pumpwood authorization.
+
+        Args:
+            f (Callable):
+                Flask view function to wrap.
+
+        Returns:
+            Callable:
+                Wrapped function that checks auth before execution.
+        """
         def wrapped(*args, **kwargs):
             resp = cls.check_authorization()
 

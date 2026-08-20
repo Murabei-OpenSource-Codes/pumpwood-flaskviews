@@ -16,11 +16,39 @@ class GeometryField(fields.Field):
     """
 
     def _serialize(self, value, attr, obj):
+        """Serialize a GeoAlchemy geometry column to GeoJSON mapping.
+
+        Args:
+            value:
+                GeoAlchemy geometry value.
+            attr (str):
+                Attribute name on the schema.
+            obj:
+                Object being serialized.
+
+        Returns:
+            dict | None:
+                GeoJSON-compatible mapping, or None when value is None.
+        """
         if value is None:
             return None
         return geometry.mapping(to_shape(value))
 
     def _deserialize(self, value, attr, data):
+        """Deserialize GeoJSON into a GeoAlchemy geometry.
+
+        Args:
+            value:
+                GeoJSON-like mapping or None.
+            attr (str):
+                Attribute name on the schema.
+            data (dict):
+                Full input data dictionary.
+
+        Returns:
+            object | None:
+                GeoAlchemy geometry with SRID 4326, or None.
+        """
         if value is None:
             return None
         return from_shape(geometry.shape(value), srid=4326)
@@ -29,11 +57,11 @@ class GeometryField(fields.Field):
 class ChoiceField(fields.Field):
     """Marshmallow field to serialize and validate ChoiceFields."""
 
-    def __init__(self, *args, choices: list[tuple] = None, **kwargs):
+    def __init__(self, *args, choices: list[tuple] | None = None, **kwargs):
         """Initialize the choice field.
 
         Args:
-            choices (list[tuple]):
+            choices (list[tuple] | None):
                 A list of (code, human_readable) tuples or lists used to
                 validate the field values.
             *args:
@@ -154,7 +182,21 @@ class PrimaryKeyField(fields.Function):
 
     _primary_keys = None
 
-    def _serialize(self, value, attr, obj, **kwargs):
+    def _serialize(self, value, attr, obj, **kwargs) -> str | int:
+        """Serialize primary key columns as a Pumpwood Base64 pk.
+
+        Args:
+            value:
+                Raw field value (unused).
+            attr (str):
+                Attribute name on the schema.
+            obj:
+                SQLAlchemy instance being serialized.
+
+        Returns:
+            str | int:
+                Base64-encoded composite pk or scalar pk value.
+        """
         if self._primary_keys is None:
             mapper = sqlalchemy_inspect(obj.__table__)
             self._primary_keys = [
@@ -163,4 +205,18 @@ class PrimaryKeyField(fields.Function):
             obj=obj, primary_keys=self._primary_keys)
 
     def _deserialize(self, value, attr, data, **kwargs):
+        """Deserialize a Pumpwood Base64 pk into pk components.
+
+        Args:
+            value:
+                Base64 pk string or scalar pk value.
+            attr (str):
+                Attribute name on the schema.
+            data (dict):
+                Full input data dictionary.
+
+        Returns:
+            dict | int | float:
+                Decoded primary key structure.
+        """
         return CompositePkBase64Converter.load(value=value)

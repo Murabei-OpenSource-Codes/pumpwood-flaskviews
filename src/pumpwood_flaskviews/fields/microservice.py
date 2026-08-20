@@ -1,4 +1,4 @@
-"""Pumpwood Marshmellow microservice fields."""
+"""Pumpwood Marshmallow microservice fields."""
 import copy
 from dataclasses import dataclass
 from loguru import logger
@@ -55,9 +55,9 @@ class MicroserviceForeignKeyField(Field):
 
     def __init__(self, source: str,
                  microservice: PumpWoodMicroService,
-                 model_class: str, display_field: str = None,
-                 complementary_source: Dict[str, str] = None,
-                 fields: List[str] = None, **kwargs):
+                 model_class: str, display_field: str | None = None,
+                 complementary_source: Dict[str, str] | None = None,
+                 fields: List[str] | None = None, **kwargs):
         """Class constructor.
 
         Args:
@@ -68,16 +68,16 @@ class MicroserviceForeignKeyField(Field):
                 foreign_key information.
             model_class (str):
                 Model class associated with Foreign Key.
-            display_field (str):
+            display_field (str | None):
                 Display field that is set as __display_field__ value
                 when returning the object.
-            complementary_source (Dict[str, str]):
+            complementary_source (Dict[str, str] | None):
                 When related field has a composite primary key it is
                 necessary to specify complementary primary key field to
                 fetch the object. The dictionary will set the mapping
                 of the complementary pk field to correspondent related
                 model obj key -> related object field.
-            fields (List[str]):
+            fields (List[str] | None):
                 Set the fields that will be returned at the foreign key
                 object.
             **kwargs:
@@ -109,17 +109,11 @@ class MicroserviceForeignKeyField(Field):
         super(MicroserviceForeignKeyField, self).__init__(**kwargs)
 
     def get_source_pk_fields(self) -> List[str]:
-        """Return a list of source fields associated with FK.
-
-        If will return the source pk and the complementary_source
-        keys.
-
-        Args:
-            No Args.
+        """Return source fields used to resolve the foreign key.
 
         Returns:
-            Return a list of the fields that are considered when retrieving
-            a foreign key.
+            list[str]:
+                The source pk field plus complementary_source keys.
         """
         # Treat when complementary_source is not set
         complementary_source = self.complementary_source | {}
@@ -241,8 +235,24 @@ class MicroserviceForeignKeyField(Field):
             hash_dict=hash_dict, value=object_data)
         return object_data
 
-    def _serialize(self, value, attr, obj, **kwargs):
-        """Use microservice to get object at serialization."""
+    def _serialize(self, value, attr, obj, **kwargs) -> dict:
+        """Serialize the foreign key by retrieving the related object.
+
+        Args:
+            value:
+                Raw field value (unused; pk is read from obj).
+            attr (str):
+                Attribute name on the schema.
+            obj:
+                Object being serialized.
+            **kwargs:
+                Marshmallow internal serialization options.
+
+        Returns:
+            dict:
+                Related object data or an empty placeholder when pk is
+                None.
+        """
         self.microservice.login()
 
         object_pk = None
@@ -263,11 +273,22 @@ class MicroserviceForeignKeyField(Field):
             object_pk=object_pk, fields=self.fields)
 
     def _deserialize(self, value, attr, data, **kwargs):
+        """Reject deserialization because the field is dump-only.
+
+        Raises:
+            NotImplementedError:
+                Always raised; use an integer FK field for writes.
+        """
         raise NotImplementedError(
             "MicroserviceForeignKeyField are read-only")
 
-    def to_dict(self):
-        """Return a dict with values to be used on options end-point."""
+    def to_dict(self) -> ForeignKeyColumnExtraInfo:
+        """Return metadata for the fill_options endpoint.
+
+        Returns:
+            ForeignKeyColumnExtraInfo:
+                Foreign key column metadata for the options endpoint.
+        """
         source_keys = self.get_source_pk_fields()
         fk_type_obj = ForeignKeyColumnExtraInfo(
             model_class=self.model_class, many=False,
@@ -284,16 +305,15 @@ class MicroserviceRelatedField(Field):
 
     _CHECK_ATTRIBUTE = False
     _PUMPWOOD_RELATED = True
-    """Set _PUMPWOOD_FK=True, this will be used by serializer to get if this
-       field is a 'Related Field'."""
+    """Set _PUMPWOOD_RELATED=True for serializer related-field detection."""
 
     def __init__(self, microservice: PumpWoodMicroService,
                  model_class: str, foreign_key: str,
                  complementary_foreign_key: None | Dict[str, str] = None,
-                 pk_field: str = 'id', order_by: List[str] = None,
+                 pk_field: str = 'id', order_by: List[str] | None = None,
                  exclude_dict: None | Dict[str, str] = None,
                  help_text: str = "", read_only: bool = True,
-                 fields: List[str] = None, **kwargs):
+                 fields: List[str] | None = None, **kwargs):
         """Class constructor.
 
         Args:
@@ -311,15 +331,15 @@ class MicroserviceRelatedField(Field):
             pk_field (str):
                 Field of the origin model class that will be used to filter
                 related models at foreign_key.
-            order_by (List[str]):
+            order_by (List[str] | None):
                 List of strings that will be used to order query results.
-            exclude_dict (Dict[str, str]):
+            exclude_dict (Dict[str, str] | None):
                 Default exclude_dict to be applied at list end-point to
                 retrieve related objects.
             help_text (str):
                 Help text associated with related model. This will be
                 returned at fill_options data.
-            fields (List[str]):
+            fields (List[str] | None):
                 Set the fields that will be returned at the foreign key
                 object.
             read_only (bool):
@@ -374,11 +394,17 @@ class MicroserviceRelatedField(Field):
         super(MicroserviceRelatedField, self).__init__(**kwargs)
 
     def _get_list_arg_filter_dict(self, obj) -> Dict[str, Any]:
-        """Return the filter_dict that will be used at list end-point.
+        """Build filter_dict for the related-object list call.
+
+        Args:
+            obj:
+                Object being serialized.
+            **kwargs:
+                Marshmallow internal serialization options.
 
         Returns:
-            Return a dictionary that will be used on filter_dict at
-            list end-point.
+            dict:
+                filter_dict passed to microservice.list_without_pag.
         """
         pk_field = getattr(obj, self.pk_field)
         filter_dict = {self.foreign_key: pk_field}
@@ -387,39 +413,63 @@ class MicroserviceRelatedField(Field):
         return filter_dict
 
     def _get_list_arg_exclude_dict(self, obj) -> Dict[str, Any]:
-        """Return the exclude dict that will be used at list end-point.
+        """Build exclude_dict for the related-object list call.
+
+        Args:
+            obj:
+                Object being serialized (unused; copies field config).
 
         Returns:
-            Return a dictionary that will be used as exclude_dict at
-            list end-point.
+            dict:
+                exclude_dict passed to microservice.list_without_pag.
         """
         return copy.deepcopy(self.exclude_dict)
 
     def _get_list_arg_order_by(self, obj) -> List[str]:
-        """Return order_by list to be used at list end-point.
+        """Build order_by for the related-object list call.
+
+        Args:
+            obj:
+                Object being serialized (unused; copies field config).
 
         Returns:
-            Return a list that will be used as order_by at
-            list end-point.
+            list[str]:
+                order_by passed to microservice.list_without_pag.
         """
         return copy.deepcopy(self.order_by)
 
     def _get_list_arg_fields(self, obj) -> List[str]:
-        """Return fields list to be used at list end-point.
+        """Build fields list for the related-object list call.
+
+        Args:
+            obj:
+                Object being serialized (unused; copies field config).
 
         Returns:
-            Return a list that will be used as fields at
-            list end-point.
+            list[str] | None:
+                fields passed to microservice.list_without_pag.
         """
         return copy.deepcopy(self.fields)
 
-    def _serialize(self, value, attr, obj, **kwargs):
-        """Use microservice to get object at serialization.
+    def _serialize(self, value, attr, obj, **kwargs) -> list[dict]:
+        """Serialize related objects via microservice list_without_pag.
 
         Cache is not used on this serialization since this type of field
-        is only used for `many=False` serializations. It will only serialize
-        one object with one related field, which will lead to G cache calls
-        to be not used (just one object, no other to retrieve the cache.)
+        is only used for ``many=False`` serializations.
+
+        Args:
+            value:
+                Raw field value (unused).
+            attr (str):
+                Attribute name on the schema.
+            obj:
+                Object being serialized.
+            **kwargs:
+                Marshmallow internal serialization options.
+
+        Returns:
+            list[dict]:
+                Related rows or a single-item error payload list.
         """
         self.microservice.login()
         filter_dict = self._get_list_arg_filter_dict(obj)
@@ -489,11 +539,22 @@ class MicroserviceRelatedField(Field):
                     "order_by": order_by, "fields": fields}}]
 
     def _deserialize(self, value, attr, data, **kwargs):
+        """Reject deserialization because the field is dump-only.
+
+        Raises:
+            NotImplementedError:
+                Always raised; related writes are not supported yet.
+        """
         raise NotImplementedError(
             "MicroserviceRelatedField are read-only")
 
-    def to_dict(self):
-        """Return a dict with values to be used on options end-point."""
+    def to_dict(self) -> RelatedColumnExtraInfo:
+        """Return metadata for the fill_options endpoint.
+
+        Returns:
+            RelatedColumnExtraInfo:
+                Related column metadata for the options endpoint.
+        """
         return RelatedColumnExtraInfo(
             model_class=self.model_class, many=True, pk_field=self.pk_field,
             foreign_key=self.foreign_key,
@@ -534,12 +595,17 @@ class ValidateForeignKeyFieldMicroservice(Integer):
         self.microservice = not_logged_microservice
         super().__init__(*args, **kwargs)
 
-    def _validate_obj_access(self, object_pk: str | int) -> None:
+    def _validate_obj_access(self, object_pk: str | int) -> dict | None:
         """Validate if user has access to object.
 
         Args:
             object_pk (str | int):
                 Primary key of the related object.
+
+        Returns:
+            dict | None:
+                Cached object data when validation succeeds via cache;
+                otherwise None after a successful retrieve.
 
         Raises:
             PumpWoodObjectDoesNotExist:
@@ -565,7 +631,7 @@ class ValidateForeignKeyFieldMicroservice(Integer):
                 # Pumpwood exception classes.
                 raise_from_dict(exception_dict=g_cached_data)
             return g_cached_data
-        
+
         # If cache not found, retrieve data using microservice.
         try:
             # Propagate the base_filter_skip to validate access to FK
@@ -593,6 +659,8 @@ class ValidateForeignKeyFieldMicroservice(Integer):
                 Attribute name on the schema.
             data (dict):
                 Full input data dictionary.
+            **kwargs:
+                Marshmallow internal deserialization options.
 
         Returns:
             int:

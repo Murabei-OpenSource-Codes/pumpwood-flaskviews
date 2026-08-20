@@ -1,4 +1,4 @@
-"""Fields to auto fill usign other objects data."""
+"""Marshmallow fields that auto-fill values from related objects."""
 from typing import Any
 from marshmallow.fields import Field
 from marshmallow import missing
@@ -19,58 +19,61 @@ from pumpwood_flaskviews.cache import PumpwoodFlaskGDiskCache
 
 @dataclass
 class AutoFillFieldCacheHash(PumpwoodDataclassMixin):
-    """Dictionary to create cache hash dict for AutoFillFieldLocal."""
+    """Cache hash components for AutoFill field lookups."""
 
+    authorization_token: str | None
+    """Request Authorization header value."""
     model_class: str
-    """Model class for the autofill field."""
+    """Target model class for the autofill lookup."""
     pk: str | int
-    """Base64 dictionary or interger for object id."""
+    """Primary key (integer or composite Base64 string)."""
     field: str
-    """Field to extract data to fill object."""
+    """Attribute on the related object used as the fill value."""
+    apply_user_permission: bool
+    """Whether row-permission filters apply to the lookup."""
     context: str = 'flaskviews--auto-fill-field'
-    """Content of the file that will be returned at the action."""
+    """Context identifier for the cache entry."""
 
 
 class AutoFillFieldLocal(Field):
-    """Define a row permission field that is auto filed using other model.
+    """Auto-fill a field from a related local SQLAlchemy model.
 
-    It will query a local model using a sqlalchemy call and fill the
-    value with `fill_field` attribute from the other model.
+    On deserialize, queries the related model and copies ``fill_field``
+    into the current object.
     """
 
     pumpwood_read_only = True
     """Used on view to retrieve if field is read only for pumpwood."""
 
-    model_class: FlaskPumpWoodBaseModel = None
-    """Model class that will be loded to request autofill field."""
+    model_class: FlaskPumpWoodBaseModel | None = None
+    """Resolved model class used to fetch autofill data."""
 
     def __init__(self, model_class: FlaskPumpWoodBaseModel | str,
                  source: str, fill_field: str,
                  complementary_source: dict[str, str] = {},
+                 apply_user_permission: bool = False,
                  *args, **kwargs):
-        """__init__.
+        """Initialize the local autofill field.
 
-        Fetch information from other object to fill the actual on
-        saving.
+        Fetch information from a related object when saving the current
+        instance.
 
         Args:
             model_class (FlaskPumpWoodBaseModel | str):
-                A string for path to import the model class or the class
-                of the object from where it will be retrived the model
-                class.
+                Model class or import path for the related object.
             source (str):
-                Field at the actual object that will be considered a foreign
-                key to fetch inforamtion from other.
+                Field on the current object used as the foreign key.
             fill_field (str):
-                Column at the 'fill object' that will be used to
-                fill the 'action object' field.
-            complementary_source (Dict[str, str]):
-                Complementary foreignkey, the dictonary will map the
-                information from the actual object -> destiny object.
+                Attribute on the related object copied into this field.
+            complementary_source (dict[str, str]):
+                Maps current-object fields to related-object pk fields
+                for composite keys.
+            apply_user_permission (bool):
+                If True, uses default_query_get (row-permission filter).
             *args:
-                Other posicional arguments used at marshmallow fields.
+                Positional arguments forwarded to Marshmallow Field.
             **kwargs:
-                Other named arguments used at marshmallow fields.
+                Keyword arguments forwarded to Marshmallow Field.
         """
         # Set allow_none to True by default if not explicitly provided
         kwargs['allow_none'] = True
@@ -79,10 +82,16 @@ class AutoFillFieldLocal(Field):
         self._source = source
         self._fill_field = fill_field
         self._complementary_source = complementary_source
+        self._apply_user_permission = apply_user_permission
         super().__init__(*args, **kwargs)
 
     def _get_model_class(self) -> FlaskPumpWoodBaseModel:
-        """Load model class at serialization to avoid circular dependency."""
+        """Resolve model class at deserialization time.
+
+        Returns:
+            FlaskPumpWoodBaseModel:
+                The related SQLAlchemy model class.
+        """
         if self.model_class is None:
             self.model_class = _import_function_by_string(
                 module=self._pre_load_model_class)
@@ -90,8 +99,23 @@ class AutoFillFieldLocal(Field):
 
     @classmethod
     def validate_fields(cls, field_name: str, primary_keys: dict,
-                        data: dict, related_model: str) -> bool:
-        """Validate fields to check for all fields necessary to autofill."""
+                        data: dict, related_model: str) -> None:
+        """Ensure all pk fields required for autofill are present.
+
+        Args:
+            field_name (str):
+                Name of the autofill field being deserialized.
+            primary_keys (dict):
+                Mapping of source fields to related-object pk fields.
+            data (dict):
+                Incoming payload for the object being saved.
+            related_model (str):
+                Related model name used in error messages.
+
+        Raises:
+            PumpWoodObjectSavingException:
+                If any required primary-key field is missing from data.
+        """
         set_primary_keys_keys = set(primary_keys.keys())
         set_data_keys = set(data.keys())
         missing_keys = set_primary_keys_keys - set_data_keys
@@ -106,21 +130,54 @@ class AutoFillFieldLocal(Field):
                     "primary_keys": set_primary_keys_keys,
                     "related_model": related_model})
 
-    def _get_related_primary_keys(self):
-        """Get related primary keys fields and values."""
+    def _get_related_primary_keys(self) -> dict[str, str]:
+        """Build primary-key mapping for the related lookup.
+
+        Returns:
+            dict[str, str]:
+                Source field names mapped to related-object pk fields.
+        """
         primary_keys = {self._source: 'id'}
         primary_keys.update(self._complementary_source)
         return primary_keys
 
     def _build_fk(self, data: dict, primary_keys: dict
-                  ) -> FlaskPumpWoodBaseModel:
-        """Build fk dictionary using the object information."""
+                  ) -> str | int:
+        """Encode composite primary key from payload data.
+
+        Args:
+            data (dict):
+                Incoming payload for the object being saved.
+            primary_keys (dict):
+                Mapping of source fields to related-object pk fields.
+
+        Returns:
+            str | int:
+                Pumpwood primary key for the related object.
+        """
         object_pk = CompositePkBase64Converter.dump(
             obj=data, primary_keys=primary_keys)
         return object_pk
 
     def _get_fill_value(self, data: dict, field_name: str) -> Any:
-        """Get fill value from fill object."""
+        """Fetch the fill value from the related local object.
+
+        Args:
+            data (dict):
+                Incoming payload for the object being saved.
+            field_name (str):
+                Name of the autofill field being deserialized.
+
+        Returns:
+            Any:
+                Value of ``fill_field`` on the related object.
+
+        Raises:
+            PumpWoodObjectDoesNotExist:
+                If the related object was not found.
+            PumpWoodOtherException:
+                If ``fill_field`` is not defined on the related model.
+        """
         model_class = self._get_model_class()
         primary_keys = self._get_related_primary_keys()
 
@@ -132,8 +189,10 @@ class AutoFillFieldLocal(Field):
         # Build primary keys dictionary
         pk = self._build_fk(data=data, primary_keys=primary_keys)
         hash_dict = AutoFillFieldCacheHash(
+            authorization_token=AuthFactory.get_auth_header()['Authorization'],
             model_class=model_class.__name__.lower(),
-            pk=pk, field=self._fill_field)
+            pk=pk, field=self._fill_field,
+            apply_user_permission=self._apply_user_permission)
 
         # Try to fetch data using cached information
         cached_data = PumpwoodFlaskGDiskCache.get(hash_dict=hash_dict)
@@ -143,7 +202,13 @@ class AutoFillFieldLocal(Field):
         # Fetch information from database and treat the error if the object
         # was not found
         try:
-            fill_object = model_class.query_get(pk=pk)
+            fill_object = None
+            # Default query will validate if user has permission to
+            # access the object
+            if self._apply_user_permission:
+                fill_object = model_class.default_query_get(pk=pk)
+            else:
+                fill_object = model_class.query_get(pk=pk)
         except PumpWoodObjectDoesNotExist as e:
             msg = (
                 "Local Autofill was not able to fetch information from " +
@@ -171,9 +236,28 @@ class AutoFillFieldLocal(Field):
         return fill_value
 
     def deserialize(self, value, attr=None, data=None, **kwargs):
-        """Remove field validation, missing not run.
+        """Resolve autofill value during object deserialization.
 
-        By default Marshmellow will skip deserialization i
+        Skips Marshmallow missing-value handling so AUTO_FILL defaults
+        can run. Honors audit overwrite when present.
+
+        Args:
+            value:
+                Raw input value (usually ignored).
+            attr (str | None):
+                Attribute name on the schema.
+            data (dict | None):
+                Full incoming payload.
+            **kwargs:
+                Marshmallow internal deserialization options.
+
+        Returns:
+            Any:
+                Autofill value from the related object or audit override.
+
+        Raises:
+            PumpWoodObjectSavingException:
+                If the source foreign-key field is missing from data.
         """
         current_user = AuthFactory.retrieve_authenticated_user()
         overwrited_data = _get_overwrite_audit(
@@ -197,47 +281,63 @@ class AutoFillFieldLocal(Field):
 
 
 class AutoFillFieldMicroservice(Field):
-    """Define a row permission field that is auto filed using other model.
+    """Auto-fill a field from a related remote microservice model.
 
-    It will query a non-local model using a microservice call and fill the
-    value with `fill_field` key from the other model.
+    On deserialize, retrieves ``fill_field`` from another service via
+    ``PumpWoodMicroService.retrieve``.
     """
 
     pumpwood_read_only = True
     """Used on view to retrieve if field is read only for pumpwood."""
 
-    model_class: FlaskPumpWoodBaseModel
-    """Model class that will be loded to request autofill field."""
+    model_class: str
+    """Remote model class name used to fetch autofill data."""
 
     def __init__(self, microservice: PumpWoodMicroService, model_class: str,
                  source: str, fill_field: str,
                  complementary_source: dict[str, str] = {},
+                 apply_user_permission: bool = False,
                  *args, **kwargs):
-        """__init__.
+        """Initialize the microservice autofill field.
 
-        Fetch information from other object to fill the actual on
-        saving.
+        Fetch information from a remote object when saving the current
+        instance.
 
         Args:
-            model_class (str):
-                String defining the model class.
             microservice (PumpWoodMicroService):
-                Microservice object to request autofill data from other
-                services.
+                Client used to retrieve related object data.
+            model_class (str):
+                Remote model class name.
             source (str):
-                Field at the actual object that will be considered a foreign
-                key to fetch inforamtion from other.
+                Field on the current object used as the foreign key.
             fill_field (str):
-                Column at the 'fill object' that will be used to
-                fill the 'action object' field.
-            complementary_source (Dict[str, str]):
-                Complementary foreignkey, the dictonary will map the
-                information from the actual object -> destiny object.
+                Key on the related object copied into this field.
+            complementary_source (dict[str, str]):
+                Maps current-object fields to related-object pk fields
+                for composite keys.
+            apply_user_permission (bool):
+                If True, forwards request auth and skips logged-in
+                microservice credentials.
             *args:
-                Other posicional arguments used at marshmallow fields.
+                Positional arguments forwarded to Marshmallow Field.
             **kwargs:
-                Other named arguments used at marshmallow fields.
+                Keyword arguments forwarded to Marshmallow Field.
+
+        Raises:
+            PumpWoodOtherException:
+                If apply_user_permission is True while the microservice
+                already has credentials set.
         """
+        if microservice.is_credential_set() and apply_user_permission:
+            msg = (
+                "It is not possible to apply user permission to the "
+                "microservice if the microservice is logged in. Please, "
+                "use a non logged microservice (without credentials) or set "
+                "apply_user_permission to False. Current microservice name: "
+                "[{microservice}].")
+            raise PumpWoodOtherException(
+                msg, payload={"microservice": microservice.name})
+
         # Set allow_none to True by default if not explicitly provided
         kwargs['allow_none'] = True
         kwargs['load_default'] = AUTO_FILL.value()
@@ -246,12 +346,28 @@ class AutoFillFieldMicroservice(Field):
         self._source = source
         self._fill_field = fill_field
         self._complementary_source = complementary_source
+        self._apply_user_permission = apply_user_permission
         super().__init__(*args, **kwargs)
 
     @classmethod
     def validate_fields(cls, field_name: str, primary_keys: dict,
-                        data: dict, related_model: str) -> bool:
-        """Validate fields to check for all fields necessary to autofill."""
+                        data: dict, related_model: str) -> None:
+        """Ensure all pk fields required for autofill are present.
+
+        Args:
+            field_name (str):
+                Name of the autofill field being deserialized.
+            primary_keys (dict):
+                Mapping of source fields to related-object pk fields.
+            data (dict):
+                Incoming payload for the object being saved.
+            related_model (str):
+                Related model name used in error messages.
+
+        Raises:
+            PumpWoodObjectSavingException:
+                If any required primary-key field is missing from data.
+        """
         set_primary_keys_keys = set(primary_keys.keys())
         set_data_keys = set(data.keys())
         missing_keys = set_primary_keys_keys - set_data_keys
@@ -266,21 +382,54 @@ class AutoFillFieldMicroservice(Field):
                     "primary_keys": set_primary_keys_keys,
                     "related_model": related_model})
 
-    def _get_related_primary_keys(self):
-        """Get related primary keys fields and values."""
+    def _get_related_primary_keys(self) -> dict[str, str]:
+        """Build primary-key mapping for the related lookup.
+
+        Returns:
+            dict[str, str]:
+                Source field names mapped to related-object pk fields.
+        """
         primary_keys = {self._source: 'id'}
         primary_keys.update(self._complementary_source)
         return primary_keys
 
     def _build_fk(self, data: dict, primary_keys: dict
-                  ) -> FlaskPumpWoodBaseModel:
-        """Build fk dictionary using the object information."""
+                  ) -> str | int:
+        """Encode composite primary key from payload data.
+
+        Args:
+            data (dict):
+                Incoming payload for the object being saved.
+            primary_keys (dict):
+                Mapping of source fields to related-object pk fields.
+
+        Returns:
+            str | int:
+                Pumpwood primary key for the related object.
+        """
         object_pk = CompositePkBase64Converter.dump(
             obj=data, primary_keys=primary_keys)
         return object_pk
 
     def _get_fill_value(self, data: dict, field_name: str) -> Any:
-        """Get fill value from fill object."""
+        """Fetch the fill value from the related microservice object.
+
+        Args:
+            data (dict):
+                Incoming payload for the object being saved.
+            field_name (str):
+                Name of the autofill field being deserialized.
+
+        Returns:
+            Any:
+                Value of ``fill_field`` on the related object.
+
+        Raises:
+            PumpWoodObjectDoesNotExist:
+                If the related object was not found.
+            PumpWoodOtherException:
+                If ``fill_field`` is missing from the retrieve response.
+        """
         primary_keys = self._get_related_primary_keys()
 
         # Validate if fields are correct
@@ -291,8 +440,10 @@ class AutoFillFieldMicroservice(Field):
         # Build primary keys dictionary
         pk = self._build_fk(data=data, primary_keys=primary_keys)
         hash_dict = AutoFillFieldCacheHash(
+            authorization_token=AuthFactory.get_auth_header()['Authorization'],
             model_class=self.model_class.lower(),
-            pk=pk, field=self._fill_field)
+            pk=pk, field=self._fill_field,
+            apply_user_permission=self._apply_user_permission)
 
         # Try to fetch data using cached information
         cached_data = PumpwoodFlaskGDiskCache.get(hash_dict=hash_dict)
@@ -302,9 +453,23 @@ class AutoFillFieldMicroservice(Field):
         # Fetch information from database and treat the error if the object
         # was not found
         try:
-            fill_data = self.microservice.retrieve(
-                model_class=self.model_class, pk=pk,
-                fields=[self._fill_field])
+            fill_data = None
+            if self._apply_user_permission:
+                # To apply user permission on the request, the auth header
+                # is fetched from the current user request.
+                # The microservice object must not be logged in other
+                # to allow the auth header injection.
+                auth_header = AuthFactory.get_auth_header()
+                fill_data = self.microservice.retrieve(
+                    model_class=self.model_class, pk=pk,
+                    fields=[self._fill_field],
+                    auth_header=auth_header)
+            else:
+                # Use the logged microservice object to retrieve data,
+                # usually this is a super user associated microservice.
+                fill_data = self.microservice.retrieve(
+                    model_class=self.model_class, pk=pk,
+                    fields=[self._fill_field])
         except PumpWoodObjectDoesNotExist as e:
             msg = (
                 "Local Autofill was not able to fetch information from " +
@@ -332,9 +497,28 @@ class AutoFillFieldMicroservice(Field):
         return fill_value
 
     def deserialize(self, value, attr=None, data=None, **kwargs):
-        """Remove field validation, missing not run.
+        """Resolve autofill value during object deserialization.
 
-        By default Marshmellow will skip deserialization i
+        Skips Marshmallow missing-value handling so AUTO_FILL defaults
+        can run. Honors audit overwrite when present.
+
+        Args:
+            value:
+                Raw input value (usually ignored).
+            attr (str | None):
+                Attribute name on the schema.
+            data (dict | None):
+                Full incoming payload.
+            **kwargs:
+                Marshmallow internal deserialization options.
+
+        Returns:
+            Any:
+                Autofill value from the related object or audit override.
+
+        Raises:
+            PumpWoodObjectSavingException:
+                If the source foreign-key field is missing from data.
         """
         current_user = AuthFactory.retrieve_authenticated_user()
         overwrited_data = _get_overwrite_audit(

@@ -17,34 +17,35 @@ class BaseQueryABC(ABC):
 
     @property
     @abstractmethod
-    def skip_arg(self):
-        """Define the name of the argument to allow skiping filter."""
+    def skip_arg(self) -> str:
+        """Return the URL/query argument name that skips this filter."""
         pass
 
-    def add_filter(self, model: DeclarativeBase, query: Query = None,
-                   filter_dict: None | dict = None, exclude_dict: dict = None,
-                   order_by: list = None) -> Query:
+    def add_filter(self, model: DeclarativeBase, query: Query | None = None,
+                   filter_dict: dict | None = None,
+                   exclude_dict: dict | None = None,
+                   order_by: list[str] | None = None) -> Query:
         """It is necessary to implement base_query.
 
         Args:
             model (DeclarativeBase):
                 Model that will return the objects associated with the
                 base query.
-            query (Query):
-                Previous query statment, it can be used to concatenate
-                more than one base query.
-            filter_dict (dict):
+            query (Query | None):
+                Previous query statement used to chain filters.
+            filter_dict (dict | None):
                 Dictionary to be used in filter operations.
                 See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
-            exclude_dict (dict):
+            exclude_dict (dict | None):
                 Dictionary to be used in filter operations.
                 See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
-            order_by (list):
-                Dictionary to be used in filter operations.
+            order_by (list[str] | None):
+                List of fields to be used in order by operations.
                 See pumpwood_miscellaneous.SqlalchemyQueryMisc documentation.
 
         Returns:
-            Returns a base query to be used on model fetch.
+            Query:
+                Base query with filters applied.
         """
         pass
 
@@ -57,7 +58,8 @@ class BaseQueryABC(ABC):
                 JSON loaded base_filter_skip parameter.
 
         Returns:
-            The same data from base_filter_skip.
+            list[str]:
+                Validated skip-argument names from the request.
 
         Raises:
             PumpWoodQueryException:
@@ -80,7 +82,17 @@ class BaseQueryABC(ABC):
         return base_filter_skip
 
     def get_skip_arg(self) -> list[str]:
-        """Retrieve skip base filter from URL."""
+        """Parse base_filter_skip from the current request URL.
+
+        Returns:
+            list[str]:
+                Skip-argument names parsed from the request.
+
+        Raises:
+            PumpWoodQueryException:
+                If base_filter_skip is not valid JSON or not a list of
+                strings.
+        """
         # Try to load URL parameter as a JSON
         request_base_filter_skip = get_base_filter_skip()
         try:
