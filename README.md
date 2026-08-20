@@ -71,20 +71,19 @@ register_pumpwood_view(app=app, view=PersonView.as_view())
 
 BSD-3-Clause License. See repository metadata and `pyproject.toml`.
 
-## Description
-This package assists in the creation of views in Flask using the Pumpwood pattern.
-
 ## Environment variables
-- **PUMPWOOD_FLASKVIEWS__INFO_CACHE_EXPIRATION (int):** Default 10 minutes
+- **MICROSERVICE_URL (str):** Base URL of the Pumpwood registration and
+  auth microservice. Used by `AuthFactory` for authorization checks.
+  Prefer this over deprecated `AuthFactory.set_server_url`.
+- **PUMPWOOD_FLASKVIEWS__INFO_CACHE_EXPIRE (int):** Default 10 minutes
   (600). Cache TTL for relatively static metadata such as field
   descriptions and fill options.
-- **PUMPWOOD_FLASKVIEWS__SERIALIZER_FK_CACHE_TIMEOUT (int):** Default to 5
-  minutes (300), this cache timeout is used to reduce microservice call to
-  bring foreign_key objects that might be present on other services on retrieve
-  and list calls. Used on `MicroserviceForeignKeyField` field.
-- **PUMPWOOD_FLASKVIEWS__AUTHORIZATION_CACHE_TIMEOUT (int):** Default to 1
-  minute (60), this cache timeout is used for authorization and row permission
-  cache.
+- **PUMPWOOD_FLASKVIEWS__SERIALIZER_FK_CACHE_EXPIRE (int):** Default 5
+  minutes (300). Cache TTL for foreign-key objects fetched from other
+  microservices on retrieve and list calls. Used by
+  `MicroserviceForeignKeyField`.
+- **PUMPWOOD_FLASKVIEWS__AUTHORIZATION_CACHE_EXPIRE (int):** Default 1
+  minute (60). Cache TTL for authorization and row-permission checks.
 
 ## pumpwood_flaskviews.action
 Expose model functions through the API. It is possible to expose normal and
@@ -150,25 +149,25 @@ microservice = PumpWoodMicroService(
     username="pumpwood", password="pumpwood")
 microservice.login()
 
-# List the actions avaiable for the model Person, it will include information
+# List the actions available for the model Person, it will include information
 # about the parameters and also the doc string associated with the function.
 person_actions = microservice.list_actions(model_class="Person")
 
 # Return the serialized person object, the parameters used at the action and
 # the result
-results = microservice.excute_action(
+results = microservice.execute_action(
   model_class="Person", pk=3, action="marry",
   parameters={"person_id": 1})
 
 # process_birthday_cards is a classfunction so it is not associated with an
 # object
-microservice.excute_action(
+microservice.execute_action(
   model_class="Person", action="process_birthday_cards")
 ```
 
 ## pumpwood_flaskviews.auth
 Integrate pumpwood authentication with flask end-points. After setting the
-Auth host it is possible o call check_authorization, it will pass request
+Auth host it is possible to call check_authorization, it will pass request
 headers to auth end-point and check if user is authenticated.
 
 ```
@@ -332,7 +331,7 @@ retrieve view. It is set to substitute using data from the model,
 example:
 ```python
 # This will help front end to display title of retrieve page
-# as '5 | Jonh Doe' substituting values os pk and name.
+# as '5 | John Doe' substituting values of pk and name.
 gui_verbose_field = '{pk} | {name}'
 
 ```
@@ -383,8 +382,9 @@ It is possible to modify function `get_gui_readonly` to make list_fields to adap
 - search_options (/rest/[model_class]/options/): Retrieve information for
     list fields and filters.
 - fill_options (/rest/[model_class]/options/): Pass an incomplete object as
-    post payload and receives the validation of the fields and update the
-    choice possibilities.
+    post payload and receive field validation and updated choice
+    possibilities. Callable serializer and SQLAlchemy defaults (`list`,
+    `dict`, `now`) are normalized to JSON-safe values in responses.
 - aggregate (/rest/[model_class]/aggregate/): Group and aggregate rows with
     pandas. Accepts `show_deleted` to include soft-deleted rows when the
     model has a `deleted` column.

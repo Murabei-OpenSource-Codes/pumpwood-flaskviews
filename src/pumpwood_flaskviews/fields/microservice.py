@@ -14,7 +14,7 @@ from pumpwood_communication.type import (
 from pumpwood_flaskviews.query.aux import get_base_filter_skip
 from pumpwood_flaskviews.auth import AuthFactory
 from pumpwood_flaskviews.cache import PumpwoodFlaskGCache
-from pumpwood_flaskviews.config import SERIALIZER_FK_CACHE_TIMEOUT
+from pumpwood_flaskviews.config import SERIALIZER_FK_CACHE_EXPIRE
 
 
 @dataclass
@@ -159,7 +159,7 @@ class MicroserviceForeignKeyField(Field):
             object_data = self.microservice.list_one(
                 model_class=self.model_class, pk=object_pk,
                 fields=self.fields, use_disk_cache=True,
-                disk_cache_expire=SERIALIZER_FK_CACHE_TIMEOUT)
+                disk_cache_expire=SERIALIZER_FK_CACHE_EXPIRE)
 
         except exceptions.PumpWoodObjectDoesNotExist:
             is_error = True

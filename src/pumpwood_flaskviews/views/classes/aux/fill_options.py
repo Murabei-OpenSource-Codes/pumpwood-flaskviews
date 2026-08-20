@@ -12,12 +12,13 @@ from sqlalchemy.sql.expression import False_ as sql_false
 from sqlalchemy.sql.expression import True_ as sql_true
 from sqlalchemy_utils.types.choice import ChoiceType
 from pumpwood_i8n.singletons import pumpwood_i8n as _
-from pumpwood_flaskviews.config import INFO_CACHE_EXPIRATION
+from pumpwood_flaskviews.config import INFO_CACHE_EXPIRE
 from pumpwood_communication.cache import default_cache
 from pumpwood_communication.type import (
     MISSING, AUTOINCREMENT, NOW, TODAY, ColumnInfo,
     ColumnExtraInfo, FileColumnExtraInfo, OptionsColumnExtraInfo,
-    PumpwoodMissingType, PrimaryKeyExtraInfo, PumpwoodDataclassMixin)
+    PumpwoodMissingType, PrimaryKeyExtraInfo, PumpwoodDataclassMixin,
+    PumpwoodSentinel)
 
 
 try:
@@ -156,7 +157,7 @@ class AuxFillOptions:
         """Set information about the fields at the local cache."""
         return default_cache.set(
             hash_dict=hash_dict, value=data,
-            expire=INFO_CACHE_EXPIRATION)
+            expire=INFO_CACHE_EXPIRE)
 
     @classmethod
     def get_model_class_name(cls, model_class) -> str:
@@ -208,6 +209,46 @@ class AuxFillOptions:
             return column.nullable
 
     @classmethod
+    def _normalize_callable_default(cls, default) -> Any | PumpwoodMissingType:
+        """Convert callable defaults to JSON-safe values.
+
+        Marshmallow ``load_default`` and SQLAlchemy ``default`` may store
+        factory callables such as ``list`` or ``dict``. Those must be
+        evaluated before ``column_data`` is cached or returned as JSON.
+
+        Args:
+            default (Any):
+                Default value or callable from serializer or model column.
+
+        Returns:
+            PumpwoodSentinel | Any:
+                Sentinel, evaluated default, or stable string marker.
+        """
+        if isinstance(default, PumpwoodSentinel):
+            return default
+        if default is MISSING:
+            return MISSING
+        if not callable(default):
+            return default
+
+        name = getattr(default, '__name__', None)
+        if name in ('now', 'utcnow', 'current_timestamp'):
+            return NOW
+        if name in ('today', 'current_date'):
+            return TODAY
+        if default is dict:
+            return {}
+        if default is list:
+            return []
+
+        try:
+            return default()
+        except TypeError:
+            if name:
+                return name + '()'
+            return repr(default)
+
+    @classmethod
     def get_default(cls, column, field_data) -> Any | PumpwoodMissingType:
         """Get default value for the column."""
         # Check if the column is an autoincrementing primary key
@@ -233,7 +274,7 @@ class AuxFillOptions:
 
         # If a default is set on serializer level, use it
         if ser_field_default is not MISSING:
-            return ser_field_default
+            return cls._normalize_callable_default(ser_field_default)
 
         # Try to get the default from the default at SQLAlchemy level
         column_default = column.default
@@ -248,22 +289,14 @@ class AuxFillOptions:
                     return TODAY
                 return getattr(arg, 'name', str(arg))
 
-            elif inspect.isroutine(arg):
-                name = getattr(arg, '__name__', '').lower()
-                if name in ('now', 'utcnow', 'current_timestamp'):
-                    return NOW
-                elif name in ('today', 'current_date'):
-                    return TODAY
-                return arg.__name__ + '()'
-
-            elif arg is dict:
-                return {}
             elif isinstance(column.default, Sequence):
                 return AUTOINCREMENT
             elif isinstance(arg, sql_false):
                 return False
             elif isinstance(arg, sql_true):
                 return True
+            elif callable(arg):
+                return cls._normalize_callable_default(arg)
             else:
                 return arg
 
@@ -290,22 +323,14 @@ class AuxFillOptions:
                     return TODAY
                 return str(arg.text)
 
-            elif inspect.isroutine(arg):
-                name = getattr(arg, '__name__', '').lower()
-                if name in ('now', 'utcnow', 'current_timestamp'):
-                    return NOW
-                elif name in ('today', 'current_date'):
-                    return TODAY
-                return arg.__name__ + '()'
-
-            elif arg is dict:
-                return {}
             elif isinstance(column.server_default, Sequence):
                 return AUTOINCREMENT
             elif isinstance(arg, sql_false):
                 return False
             elif isinstance(arg, sql_true):
                 return True
+            elif callable(arg):
+                return cls._normalize_callable_default(arg)
             else:
                 return arg
         return MISSING

@@ -10,7 +10,7 @@ from flask import request as flask_request
 from pumpwood_communication import exceptions
 from pumpwood_communication.cache import default_cache
 from pumpwood_flaskviews.config import (
-    MICROSERVICE_URL, AUTHORIZATION_CACHE_TIMEOUT)
+    MICROSERVICE_URL, AUTHORIZATION_CACHE_EXPIRE)
 
 
 AUTH_CHECK_URL = urllib.parse.urljoin(
@@ -259,7 +259,7 @@ class AuthFactory:
         authorization_data = resp.json()
         default_cache.set(
             hash_dict=hash_dict, value=authorization_data,
-            expire=AUTHORIZATION_CACHE_TIMEOUT)
+            expire=AUTHORIZATION_CACHE_EXPIRE)
         return flask_request
 
     @classmethod
@@ -331,7 +331,7 @@ class AuthFactory:
         g.user = user_data
         default_cache.set(
             hash_dict=hash_dict, value=user_data,
-            expire=AUTHORIZATION_CACHE_TIMEOUT)
+            expire=AUTHORIZATION_CACHE_EXPIRE)
         return user_data
 
     @classmethod
