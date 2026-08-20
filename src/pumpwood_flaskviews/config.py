@@ -1,4 +1,4 @@
-"""Fetch environment variables used on pumpwood flaskviews."""
+"""Environment variables used by pumpwood-flaskviews."""
 import os
 
 INFO_CACHE_EXPIRE = int(

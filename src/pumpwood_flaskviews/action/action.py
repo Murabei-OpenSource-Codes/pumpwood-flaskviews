@@ -7,7 +7,7 @@ from pumpwood_flaskviews.action.inspect import InspectType
 
 
 class Action:
-    """Internal class used to metadata-decorate a PumpWood action.
+    """Metadata wrapper for a PumpWood API action function.
 
     Extracts signature, parameters, and return information from a
     wrapped function to expose it via the API.
@@ -68,7 +68,12 @@ class Action:
         self.required_role = required_role
 
     def to_dict(self) -> dict:
-        """Return a dictionary representation of the action metadata."""
+        """Return action metadata as a serializable dictionary.
+
+        Returns:
+            dict:
+                ActionInfomation payload for list-actions endpoints.
+        """
         result = ActionInfomation(
             action_name=self.action_name,
             is_static_function=self.is_static_function,

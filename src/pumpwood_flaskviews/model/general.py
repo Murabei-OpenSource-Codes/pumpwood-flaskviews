@@ -45,9 +45,9 @@ class FlaskPumpWoodBaseModelCacheHash(PumpwoodDataclassMixin):
     authorization_token: str
     """Request authorization token."""
     model_class: str
-    """Model class for the autofill field."""
+    """SQLAlchemy model class name for cache key generation."""
     object_pk: str | int | dict
-    """Pk associated with object to get the autofill field data."""
+    """Primary key used for the cached object lookup."""
     get_type: Literal['default', 'query']
     """Identifier for the type of query (default or unfiltered)."""
     context: str = 'pumpwood-flaskviews-model-get-cache'
@@ -111,27 +111,27 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
         return default_cache._generate_hash(hash_dict)
 
     @classmethod
-    def default_filter_query(cls, query: Query = None,
-                             filter_dict: dict = None,
-                             exclude_dict: dict = None,
-                             order_by: list[str] = None) -> Query:
+    def default_filter_query(cls, query: Query | None = None,
+                             filter_dict: dict | None = None,
+                             exclude_dict: dict | None = None,
+                             order_by: list[str] | None = None) -> Query:
         """Create a query with default filter.
 
         Use base query object to add default filter to objects. Base
         query object might use auth_header.
 
         Args:
-            query (Query):
+            query (Query | None):
                 Query used as starting point.
-            filter_dict (dict):
+            filter_dict (dict | None):
                 Dictionary to be used in filter operations. See
                 pumpwood_miscellaneous.SqlalchemyQueryMisc
                 documentation.
-            exclude_dict (dict):
+            exclude_dict (dict | None):
                 Dictionary to be used in filter operations. See
                 pumpwood_miscellaneous.SqlalchemyQueryMisc
                 documentation.
-            order_by (list):
+            order_by (list[str] | None):
                 List of fields to be used in order by operations.
                 See pumpwood_miscellaneous.SqlalchemyQueryMisc
                 documentation.
@@ -149,10 +149,11 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
             exclude_dict=exclude_dict, order_by=order_by)
 
     @classmethod
-    def default_query_list(cls, filter_dict: None | dict = None,
-                           exclude_dict: dict = None,
-                           order_by: list = None, limit: int = None,
-                           base_query: Query = None) -> Query:
+    def default_query_list(cls, filter_dict: dict | None = None,
+                           exclude_dict: dict | None = None,
+                           order_by: list[str] | None = None,
+                           limit: int | None = None,
+                           base_query: Query | None = None) -> Query:
         """Create a list query using parameter and applying default filters.
 
         Args:
@@ -170,7 +171,7 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
                 documentation.
             limit (int):
                 Number of objects to be returned.
-            base_query (Query):
+            base_query (Query | None):
                 A base query to be used as initial filter.
 
         Returns:
@@ -199,7 +200,7 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
 
     @classmethod
     def default_query_get(cls, pk: str | int | dict,
-                          base_query: Query = None,
+                          base_query: Query | None = None,
                           raise_error: bool = True,
                           use_cache: bool = True) -> object:
         """Get model_class object using pumpwood pk.
@@ -216,7 +217,7 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
                 Pumpwood primary key. If the pk is already a
                 dictionary it will be considered ready to be passed
                 to the query.
-            base_query (Query):
+            base_query (Query | None):
                 A base query to be used as initial filter.
             raise_error (bool):
                 Raise error if object was not found.
@@ -307,10 +308,11 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
         return model_object
 
     @classmethod
-    def query_list(cls, filter_dict: None | dict = None,
-                   exclude_dict: dict = None,
-                   order_by: list = None, limit: int = None,
-                   base_query: Query = None) -> Query:
+    def query_list(cls, filter_dict: dict | None = None,
+                   exclude_dict: dict | None = None,
+                   order_by: list[str] | None = None,
+                   limit: int | None = None,
+                   base_query: Query | None = None) -> Query:
         """Create a list query using parameter and without default filters.
 
         Args:
@@ -328,7 +330,7 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
                 documentation.
             limit (int):
                 Number of objects to be returned.
-            base_query (Query):
+            base_query (Query | None):
                 A base query to be used as initial filter.
 
         Returns:
@@ -354,7 +356,7 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
             return query_result.limit(limit)
 
     @classmethod
-    def query_get(cls, pk: str | int | dict, base_query: Query = None,
+    def query_get(cls, pk: str | int | dict, base_query: Query | None = None,
                   raise_error: bool = True, use_cache: bool = True) -> object:
         """Get model_class object using pumpwood pk without base query filter.
 
@@ -367,7 +369,7 @@ class FlaskPumpWoodBaseModel(DeclarativeBase):
                 Pumpwood primary key. If the pk is already a
                 dictionary it will be considered ready to be passed
                 to the query.
-            base_query (Query):
+            base_query (Query | None):
                 A base query to be used as initial filter.
             raise_error (bool):
                 Raise error if object was not found.

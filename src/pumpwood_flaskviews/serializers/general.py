@@ -25,21 +25,22 @@ def get_model_class(obj: object | type) -> str:
 
 
 class PumpWoodSerializer(SQLAlchemyAutoSchema):
-    """Default PumpWood Serializer."""
+    """Default PumpWood SQLAlchemy serializer with FK/related toggles."""
 
     pk = PrimaryKeyField(allow_none=True, required=False, dump_only=True)
     model_class = fields.Function(get_model_class, dump_only=True)
 
-    def __init__(self, fields: list = None, foreign_key_fields: bool = False,
+    def __init__(self, fields: list | None = None,
+                 foreign_key_fields: bool = False,
                  related_fields: bool = False, many: bool = False,
                  default_fields: bool = False,
-                 only: list = None, *args, **kwargs) -> None:
+                 only: list | None = None, *args, **kwargs) -> None:
         """Initialize the serializer with specific visibility constraints.
 
         Args:
-            fields (list):
+            fields (list | None):
                 Legacy parameter for specific fields. (Alias for `only`).
-            only (list):
+            only (list | None):
                 Restricts the fields to be serialized.
             foreign_key_fields (bool):
                 If True, includes expanded foreign key relations.

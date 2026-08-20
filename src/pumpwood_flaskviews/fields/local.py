@@ -1,4 +1,4 @@
-"""Pumpwood Marshmellow local reference fields."""
+"""Pumpwood Marshmallow local reference fields."""
 import copy
 from dataclasses import dataclass
 from loguru import logger
@@ -26,8 +26,9 @@ def _get_sqlalchemy_type(obj: Any) -> str:
             An object to check if it is a SQLAlchemy object.
 
     Returns:
-        Return "instance" if if object is an instance, "class" if it is a
-        class and None if not an SQLAlchemy object.
+        str:
+            ``"class"`` for a mapped class, ``"instance"`` for an ORM
+            instance, or ``"not_sqlalchemy"`` otherwise.
     """
     try:
         inspected = inspect(obj)
@@ -57,9 +58,9 @@ class LocalForeignKeyField(Field):
     def __init__(self, source: str,
                  model_class: str | FlaskPumpWoodBaseModel,
                  serializer: str | object,
-                 display_field: str = None,
-                 complementary_source: Dict[str, str] = None,
-                 fields: List[str] = None, **kwargs):
+                 display_field: str | None = None,
+                 complementary_source: Dict[str, str] | None = None,
+                 fields: List[str] | None = None, **kwargs):
         """Class constructor.
 
         Args:
@@ -71,16 +72,16 @@ class LocalForeignKeyField(Field):
             serializer (str | PumpWoodSerializer):
                 Serializer that will be used to serialize objects, it is
                 possible to use a string to avoid circular imports.
-            display_field (str):
+            display_field (str | None):
                 Display field that is set as __display_field__ value
                 when returning the object.
-            complementary_source (Dict[str, str]):
+            complementary_source (Dict[str, str] | None):
                 When related field has a composite primary key it is
                 necessary to specify complementary primary key field to
                 fetch the object. The dictionary will set the mapping
                 of the complementary pk field to correspondent related
                 model obj key -> related object field.
-            fields (List[str]):
+            fields (List[str] | None):
                 Set the fields that will be returned at the foreign key
                 object.
             **kwargs:
@@ -132,16 +133,28 @@ class LocalForeignKeyField(Field):
         super(LocalForeignKeyField, self).__init__(**kwargs)
 
     def _load_model_class(self) -> FlaskPumpWoodBaseModel:
-        """Load model class at serialization to avoid circular dependency."""
+        """Resolve model class at serialization time.
+
+        Returns:
+            FlaskPumpWoodBaseModel:
+                The related SQLAlchemy model class.
+        """
         if self.model_class is None:
             self.model_class = _import_function_by_string(
                 module=self._pre_load_model_class)
+        return self.model_class
 
     def _load_serializer(self) -> object:
-        """Load model class at serialization to avoid circular dependency."""
+        """Resolve serializer at serialization time.
+
+        Returns:
+            object:
+                Serializer class or instance used to dump related rows.
+        """
         if self.serializer is None:
             self.serializer = _import_function_by_string(
                 module=self._pre_load_serializer)
+        return self.serializer
 
     def _get_source_pk_fields(self) -> List[str]:
         """Return a list of source fields associated with FK.
