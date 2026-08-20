@@ -26,7 +26,7 @@ from pumpwood_flaskviews.inspection import model_has_column
 from pumpwood_flaskviews.query import SqlalchemyQueryMisc
 from pumpwood_flaskviews.auth import AuthFactory
 from pumpwood_flaskviews.action import LoadActionParameters
-from pumpwood_flaskviews.config import INFO_CACHE_EXPIRATION
+from pumpwood_flaskviews.config import INFO_CACHE_EXPIRE
 from pumpwood_i8n.singletons import pumpwood_i8n as _
 
 
@@ -198,7 +198,7 @@ class PumpWoodFlaskView(View):
             default_cache.set(
                 hash_dict=hash_dict,
                 value=available_microservices,
-                expire=INFO_CACHE_EXPIRATION)
+                expire=INFO_CACHE_EXPIRE)
             return available_microservices
 
     def get_session(self):

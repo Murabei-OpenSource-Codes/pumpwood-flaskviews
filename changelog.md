@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.5.35] - 2026-08-19
+### Changed
+- **config**: Rename cache config constants and env vars to `*_EXPIRE`:
+  `INFO_CACHE_EXPIRE`, `SERIALIZER_FK_CACHE_EXPIRE`, and
+  `AUTHORIZATION_CACHE_EXPIRE`. Deployments must update env var names
+  (replace `PUMPWOOD_FLASKVIEWS__INFO_CACHE_EXPIRATION`,
+  `PUMPWOOD_FLASKVIEWS__SERIALIZER_FK_CACHE_TIMEOUT`, and
+  `PUMPWOOD_FLASKVIEWS__AUTHORIZATION_CACHE_TIMEOUT`).
+
+### Fixed
+- **AuxFillOptions**: Normalize callable serializer and SQLAlchemy
+  defaults (`list`, `dict`, `now`, etc.) to JSON-safe values before
+  caching and API responses.
+
+
 ## [1.5.34] - 2026-07-30
 ### Documentation
 - **FillBulkSaveFields**: Expand Google-style docstrings and `Raises` on

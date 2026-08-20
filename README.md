@@ -71,20 +71,19 @@ register_pumpwood_view(app=app, view=PersonView.as_view())
 
 BSD-3-Clause License. See repository metadata and `pyproject.toml`.
 
-## Description
-This package assists in the creation of views in Flask using the Pumpwood pattern.
-
 ## Environment variables
-- **PUMPWOOD_FLASKVIEWS__INFO_CACHE_EXPIRATION (int):** Default 10 minutes
+- **MICROSERVICE_URL (str):** Base URL of the Pumpwood registration and
+  auth microservice. Used by `AuthFactory` for authorization checks.
+  Prefer this over deprecated `AuthFactory.set_server_url`.
+- **PUMPWOOD_FLASKVIEWS__INFO_CACHE_EXPIRE (int):** Default 10 minutes
   (600). Cache TTL for relatively static metadata such as field
   descriptions and fill options.
-- **PUMPWOOD_FLASKVIEWS__SERIALIZER_FK_CACHE_TIMEOUT (int):** Default to 5
-  minutes (300), this cache timeout is used to reduce microservice call to
-  bring foreign_key objects that might be present on other services on retrieve
-  and list calls. Used on `MicroserviceForeignKeyField` field.
-- **PUMPWOOD_FLASKVIEWS__AUTHORIZATION_CACHE_TIMEOUT (int):** Default to 1
-  minute (60), this cache timeout is used for authorization and row permission
-  cache.
+- **PUMPWOOD_FLASKVIEWS__SERIALIZER_FK_CACHE_EXPIRE (int):** Default 5
+  minutes (300). Cache TTL for foreign-key objects fetched from other
+  microservices on retrieve and list calls. Used by
+  `MicroserviceForeignKeyField`.
+- **PUMPWOOD_FLASKVIEWS__AUTHORIZATION_CACHE_EXPIRE (int):** Default 1
+  minute (60). Cache TTL for authorization and row-permission checks.
 
 ## pumpwood_flaskviews.action
 Expose model functions through the API. It is possible to expose normal and
