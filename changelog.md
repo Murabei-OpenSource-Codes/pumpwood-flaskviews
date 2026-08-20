@@ -8,8 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.5.35] - 2026-08-19
 ### Changed
-- **config**: Rename cache config constants and env vars to `*_EXPIRE`:
-  `INFO_CACHE_EXPIRE`, `SERIALIZER_FK_CACHE_EXPIRE`, and
+- **config** (breaking): Rename cache config constants and env vars to
+  `*_EXPIRE`: `INFO_CACHE_EXPIRE`, `SERIALIZER_FK_CACHE_EXPIRE`, and
   `AUTHORIZATION_CACHE_EXPIRE`. Deployments must update env var names
   (replace `PUMPWOOD_FLASKVIEWS__INFO_CACHE_EXPIRATION`,
   `PUMPWOOD_FLASKVIEWS__SERIALIZER_FK_CACHE_TIMEOUT`, and
@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **AuxFillOptions**: Normalize callable serializer and SQLAlchemy
   defaults (`list`, `dict`, `now`, etc.) to JSON-safe values before
   caching and API responses.
+
+### Documentation
+- **README**: Document `MICROSERVICE_URL`, standardize cache env vars to
+  `*_EXPIRE`, and remove redundant Description section.
 
 
 ## [1.5.34] - 2026-07-30
