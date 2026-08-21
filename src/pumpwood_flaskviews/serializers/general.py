@@ -1,4 +1,4 @@
-"""Set base serializers for PumpWood systems."""
+"""Base Marshmallow serializers for Pumpwood SQLAlchemy models."""
 import inspect
 from marshmallow import validates, fields, ValidationError, EXCLUDE
 from marshmallow_sqlalchemy import SQLAlchemyAutoSchema
@@ -25,35 +25,54 @@ def get_model_class(obj: object | type) -> str:
 
 
 class PumpWoodSerializer(SQLAlchemyAutoSchema):
-    """Default PumpWood SQLAlchemy serializer with FK/related toggles."""
+    """Default PumpWood SQLAlchemy serializer with FK/related toggles.
+
+    Declares ``pk``, ``id``, and ``model_class`` on every subclass. They
+    are included in output when present in ``only`` (for example through
+    ``default_fields=True`` and ``Meta.list_fields``).
+
+    Use ``Meta.list_fields`` for list-view defaults. Set
+    ``foreign_key_fields`` or ``related_fields`` at instantiation to
+    expand nested objects instead of stripping them from ``exclude``.
+    """
 
     pk = PrimaryKeyField(allow_none=True, required=False, dump_only=True)
+    id = fields.Integer(allow_none=True, required=False, dump_only=True)
     model_class = fields.Function(get_model_class, dump_only=True)
 
-    def __init__(self, fields: list | None = None,
-                 foreign_key_fields: bool = False,
-                 related_fields: bool = False, many: bool = False,
-                 default_fields: bool = False,
-                 only: list | None = None, *args, **kwargs) -> None:
+    def __init__(self, fields: list[str] | None = None, foreign_key_fields: bool = False,
+            related_fields: bool = False, many: bool = False,
+            default_fields: bool = False, only: list[str] | None = None,
+            *args, **kwargs) -> None:
         """Initialize the serializer with specific visibility constraints.
 
+        ``fields`` is a legacy alias for ``only``. When ``default_fields``
+        is True, ``only`` is built from ``get_list_fields()``. Foreign-key
+        and related serializer fields are removed unless the matching
+        boolean flag is True.
+
         Args:
-            fields (list | None):
-                Legacy parameter for specific fields. (Alias for `only`).
-            only (list | None):
+            fields (list[str] | None):
+                Legacy parameter for specific fields. Alias for ``only``.
+            only (list[str] | None):
                 Restricts the fields to be serialized.
             foreign_key_fields (bool):
                 If True, includes expanded foreign key relations.
             related_fields (bool):
                 If True, includes expanded M2M relations.
             default_fields (bool):
-                If True, uses the default field set defined in `Meta`.
+                If True, uses ``get_list_fields()`` as ``only``.
             many (bool):
                 Whether serializing a collection or a single instance.
             *args:
                 For compatibility with base class.
             **kwargs:
                 For compatibility with base class.
+
+        Raises:
+            PumpWoodQueryException:
+                If any requested field is missing from the model or
+                serializer declaration.
         """
         kwargs["many"] = many
 
@@ -103,7 +122,7 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
         kwargs["exclude"] = to_remove
 
         # Adjusting compatibility with previous versions of
-        # Marshmellow SQLAlchemy
+        # Marshmallow SQLAlchemy
         kwargs["unknown"] = EXCLUDE  # Default excluding not mapped fields
         kwargs['load_instance'] = True  # load_instance as default
         super().__init__(**kwargs)
@@ -141,24 +160,32 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
                     "fields": list(not_present_fields),
                     "model": self.opts.model.__name__})
 
-    def get_list_fields(self) -> list:
-        """Retrieve the default list fields from Meta or declared keys.
+    def get_list_fields(self) -> list[str]:
+        """Retrieve default list fields from ``Meta``.
+
+        Resolution order:
+
+        1. ``Meta.list_fields`` when set.
+        2. Otherwise keys of ``Meta.fields`` when it is a mapping.
+
+        Include ``pk``, ``id``, and ``model_class`` in ``Meta.list_fields``
+        when list responses must expose Pumpwood identity fields.
 
         Returns:
-            list:
-                The set of fields used for default serialization.
+            list[str]:
+                Field names used when ``default_fields=True``.
         """
         list_fields = getattr(self.Meta, 'list_fields', None)
         if list_fields is None:
-            fields = getattr(self.Meta, 'fields', None)
-            return list(fields.keys())
-        return list_fields
+            meta_fields = getattr(self.Meta, 'fields', None)
+            return list(meta_fields.keys())
+        return list(list_fields)
 
-    def get_gui_readonly(self) -> list:
+    def get_gui_readonly(self) -> list[str]:
         """Retrieve the list of fields marked as read-only for the GUI.
 
         Returns:
-            list:
+            list[str]:
                 Field names that should be read-only in frontend views.
         """
         gui_readonly = getattr(self.Meta, 'gui_readonly', None)
@@ -166,29 +193,31 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
             gui_readonly = list()
         return gui_readonly
 
-    def get_foreign_keys(self) -> dict:
-        """Map all declared microservice or local foreign key fields.
+    def get_foreign_keys(self) -> dict[str, object]:
+        """Map declared microservice or local foreign key fields.
 
         Returns:
-            dict:
-                A dictionary mapping field names to relation metadata.
+            dict[str, object]:
+                Foreign-key source column names mapped to relation
+                metadata from ``field.to_dict()``.
         """
         return_dict = {}
         for field_name, field in self._declared_fields.items():
             is_micro_fk = getattr(field, '_PUMPWOOD_FK', False)
             if is_micro_fk:
-                # Use the fist source which msut be the main fk associated
+                # Use the first source which must be the main fk associated
                 # with the id from the other model class
                 info_object = field.to_dict()
                 return_dict[info_object.source_keys[0]] = info_object
         return return_dict
 
-    def get_related_fields(self) -> dict:
-        """Map all declared microservice or local related (M2M) fields.
+    def get_related_fields(self) -> dict[str, object]:
+        """Map declared microservice or local related (M2M) fields.
 
         Returns:
-            dict:
-                A dictionary mapping field names to relation metadata.
+            dict[str, object]:
+                Related field names mapped to relation metadata from
+                ``field.to_dict()``.
         """
         return_dict = {}
         for field_name, field in self._declared_fields.items():
@@ -198,15 +227,24 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
         return return_dict
 
     @validates('model_class')
-    def validate_model_class(self, value):
-        """Check if the model_class is correct."""
+    def validate_model_class(self, value: str) -> None:
+        """Validate that ``model_class`` matches the bound SQLAlchemy model.
+
+        Args:
+            value (str):
+                ``model_class`` value from the payload.
+
+        Raises:
+            ValidationError:
+                If ``value`` differs from ``Meta.model.__name__``.
+        """
         if value != self.Meta.model.__name__:
             raise ValidationError(
-                'model_class value (%s) must be iqual to model name (%s).' % (
+                'model_class value (%s) must be equal to model name (%s).' % (
                     value, self.model.__name__))
 
 
-def validate_categorical_value(n: int | float):
+def validate_categorical_value(n: int | float) -> None:
     """Validate that a value is a non-negative integer.
 
     Args:

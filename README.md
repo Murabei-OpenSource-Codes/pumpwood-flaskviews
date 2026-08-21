@@ -274,8 +274,25 @@ class JobSerializer(PumpWoodSerializer):
 ```
 
 ## pumpwood_flaskviews.serializers
-Define a base serializer for pumpwood models which always return at least pk
-and model_class.
+
+``PumpWoodSerializer`` is the base Marshmallow schema for Pumpwood models.
+It declares read-only ``pk``, ``id``, and ``model_class`` on every subclass.
+
+Those fields appear in API output when they are included in ``only`` — for
+example through ``default_fields=True`` and ``Meta.list_fields``, or when
+passed explicitly in ``fields`` on list and retrieve calls. Include ``id``
+when clients or foreign-key payloads need the integer primary key; ``pk``
+remains the Base64 Pumpwood identifier.
+
+Define default list columns on the **serializer**:
+
+```python
+class PersonSerializer(PumpWoodSerializer):
+    class Meta:
+        model = Person
+        list_fields = [
+            'pk', 'id', 'model_class', 'name', 'married_to_id']
+```
 
 ## pumpwood_flaskviews.views
 Define pumpwood basic views. They have always the same pattern:
@@ -313,11 +330,10 @@ pumpwood. This microservice must be authenticated.
 Serializer to be used to serialize model objects at endpoints.
 
 ##### list_fields [list(str)]:
-List of fields that will be considered as default to be displayed
-when calling list with default fields.
-
-It is possible to modify the function `get_list_fields` to make
-`list_fields` adapt to the request.
+Default list columns are read from ``Meta.list_fields`` on the view
+``serializer`` class (via ``get_list_fields()``). Set them on the
+serializer, not on the view. Override ``get_list_fields()`` on the view
+when list columns must adapt to the request.
 
 ##### foreign_keys [dict]:
 A dictionary to describe the relation of this model with other models
@@ -506,8 +522,7 @@ class PersonView(PumpWoodFlaskView):
 
     #######
     # Gui #
-    list_fields = [
-        'pk', 'model_class', 'name', 'birthday', 'married_to_id']
+    # list_fields: set Meta.list_fields on PersonSerializer (see above)
     gui_retrieve_fieldset = [
         {
             "name": "Main",
