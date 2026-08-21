@@ -28,6 +28,7 @@ class PumpWoodSerializer(SQLAlchemyAutoSchema):
     """Default PumpWood SQLAlchemy serializer with FK/related toggles."""
 
     pk = PrimaryKeyField(allow_none=True, required=False, dump_only=True)
+    id = fields.Integer(allow_none=True, required=False, dump_only=True)
     model_class = fields.Function(get_model_class, dump_only=True)
 
     def __init__(self, fields: list | None = None,
