@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.5.38] - 2026-08-21
+### Added
+- **PumpWoodSerializer**: Read-only ``id`` field alongside ``pk`` and
+  ``model_class``.
+
+### Documentation
+- **serializers**: Expand module and public API docstrings; fix
+  ``__all__`` exports; document ``Meta.list_fields`` behavior.
+- **README**: Document serializer identity fields and
+  ``Meta.list_fields`` configuration.
+
+
 ## [1.5.36] - 2026-08-20
 ### Added
 - **AutoFillFieldLocal**, **AutoFillFieldMicroservice**: Optional
