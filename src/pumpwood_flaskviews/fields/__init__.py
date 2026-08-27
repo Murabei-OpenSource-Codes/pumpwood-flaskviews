@@ -12,7 +12,7 @@ from .encrypt import EncryptedField
 from .readonly import ReadOnlyChoiceField
 from .row_permission import RowPermissionField
 from .autofill import AutoFillFieldLocal, AutoFillFieldMicroservice
-
+from .string import LowerCaseStringField
 
 __all__ = [
     CreatedByIdField, ModifiedByIdField, CreatedAtField, ModifiedAtField,
@@ -21,4 +21,4 @@ __all__ = [
     EncryptedField, LocalForeignKeyField, LocalRelatedField,
     ReadOnlyChoiceField, RowPermissionField, AutoFillFieldLocal,
     AutoFillFieldMicroservice, ValidateForeignKeyFieldLocal,
-    ValidateForeignKeyFieldMicroservice]
+    ValidateForeignKeyFieldMicroservice, LowerCaseStringField]

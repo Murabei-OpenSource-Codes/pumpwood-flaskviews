@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.5.39] - 2026-08-27
+### Added
+- **LowerCaseStringField**, **UpperCaseStringField**,
+  **SlugFieldStringField**: Marshmallow string fields that normalize
+  values on deserialize (save) only; dump output reflects stored model
+  values.
+- **fields**: Export **LowerCaseStringField** from
+  ``pumpwood_flaskviews.fields``.
+
+### Documentation
+- **README**: Document string normalization fields, load-only behavior,
+  and import paths.
+- **string**: Google-style docstrings and ``str | None`` return hints on
+  deserialize helpers.
+
+
 ## [1.5.38] - 2026-08-21
 ### Added
 - **PumpWoodSerializer**: Read-only ``id`` field alongside ``pk`` and
