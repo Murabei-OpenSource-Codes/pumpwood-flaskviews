@@ -190,6 +190,24 @@ Extend Marshmallow fields for common Pumpwood serializer patterns.
 - **EncryptedField**: Encrypt and decrypt sensitive values.
 - **ReadOnlyChoiceField**: Choice field restricted on deserialize.
 - **RowPermissionField**: Integer field for row-permission values.
+- **LowerCaseStringField**: Lowercase strings on deserialize (save);
+  dump output is not transformed.
+- **UpperCaseStringField**, **SlugFieldStringField**: Same load-only
+  pattern for uppercase and URL slugs (``python-slugify``). Import from
+  ``pumpwood_flaskviews.fields.string``; ``LowerCaseStringField`` is
+  also exported from ``pumpwood_flaskviews.fields``.
+
+Example:
+
+```python
+from pumpwood_flaskviews.fields import LowerCaseStringField
+from pumpwood_flaskviews.fields.string import SlugFieldStringField
+
+
+class TagSerializer(PumpWoodSerializer):
+    code = LowerCaseStringField()
+    slug = SlugFieldStringField()
+```
 
 ### Related object fields (read-only, fail-soft)
 - **LocalForeignKeyField**: Serialize a local FK using
