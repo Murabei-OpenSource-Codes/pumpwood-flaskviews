@@ -22,6 +22,8 @@ from pumpwood_flaskviews.exceptions import PumpWoodFlaskViewEndPointFoundError
 
 # Flask view
 from pumpwood_flaskviews.views.classes.aux import AuxFillOptions
+from pumpwood_flaskviews.views.classes.aux.etl_broadcast import (
+    broadcast_etl_trigger_background)
 from pumpwood_flaskviews.inspection import model_has_column
 from pumpwood_flaskviews.query import SqlalchemyQueryMisc
 from pumpwood_flaskviews.auth import AuthFactory
@@ -200,6 +202,22 @@ class PumpWoodFlaskView(View):
                 value=available_microservices,
                 expire=INFO_CACHE_EXPIRE)
             return available_microservices
+
+    def _schedule_etl_trigger(self, parameters: dict) -> None:
+        """Broadcast ETL triggers in a background worker when enabled.
+
+        Does not block the HTTP request; failures are logged only.
+
+        Args:
+            parameters (dict):
+                Payload for ``ETLTrigger.process_matching_triggers``.
+        """
+        available_microservices = self.get_available_microservices()
+        pumpwood_etl_ok = 'pumpwood-etl-app' in available_microservices
+        is_to_broadcast = self.broadcast and pumpwood_etl_ok
+        if self.microservice is not None and is_to_broadcast:
+            broadcast_etl_trigger_background(
+                self.microservice, parameters)
 
     def get_session(self):
         """Ping the database connection and restore the session if needed.
@@ -965,18 +983,13 @@ class PumpWoodFlaskView(View):
                 session.rollback()
                 raise e
 
-        available_microservices = self.get_available_microservices()
-        pumpwood_etl_ok = 'pumpwood-etl-app' in available_microservices
-        is_to_broadcast = self.broadcast and pumpwood_etl_ok
-        if self.microservice is not None and is_to_broadcast:
-            # Process ETLTrigger for the model class
-            self.microservice.login()
-            self.microservice.execute_action(
-                "ETLTrigger", action="process_triggers", parameters={
-                    "model_class": self.model_class.__name__.lower(),
-                    "type": "delete",
-                    "pk": object_dump["pk"],
-                    "action_name": None})
+        self._schedule_etl_trigger({
+            "model_class": self.model_class.__name__.lower(),
+            "trigger_type": "delete",
+            "object_id": model_object.id,
+            "action_name": None,
+            "parameters": None,
+            "process_name": None})
         return object_dump
 
     def delete_many(self, filter_dict: dict = None,
@@ -1210,30 +1223,24 @@ class PumpWoodFlaskView(View):
 
         ###################################
         # Pumpwood ETLTrigger integration #
-        available_microservices = self.get_available_microservices()
-        pumpwood_etl_ok = 'pumpwood-etl-app' in available_microservices
-        is_to_broadcast = self.broadcast and pumpwood_etl_ok
-        if self.microservice is not None and is_to_broadcast:
-            # Process ETL Trigger for the model class
-            self.microservice.login()
-            if not is_new_object:
-                self.microservice.execute_action(
-                    "ETLTrigger", action="process_triggers", parameters={
-                        "model_class": self.model_class.__name__.lower(),
-                        "type": "create",
-                        "pk": None,
-                        "action_name": None,
-                        "extra_info": result})
-            else:
-                self.microservice.execute_action(
-                    "ETLTrigger", action="process_triggers", parameters={
-                        "model_class": self.model_class.__name__.lower(),
-                        "type": "update",
-                        "pk": result["pk"],
-                        "action_name": None,
-                        "extra_info": result})
+        if not is_new_object:
+            self._schedule_etl_trigger({
+                "model_class": self.model_class.__name__.lower(),
+                "trigger_type": "create",
+                "object_id": to_save_obj.id,
+                "action_name": None,
+                "parameters": None,
+                "process_name": None})
+        else:
+            self._schedule_etl_trigger({
+                "model_class": self.model_class.__name__.lower(),
+                "trigger_type": "update",
+                "object_id": to_save_obj.id,
+                "action_name": None,
+                "parameters": None,
+                "process_name": None})
 
-        # 
+        # Add extra information to the result
         result['__is_new_object__'] = is_new_object
         return result
 
@@ -1392,6 +1399,7 @@ class PumpWoodFlaskView(View):
         # If function is static and check if pk was passed to retrieve
         # object from database
         object_dict = None
+        model_object = None
         if pk is None:
             if not action_object["is_static_function"]:
                 raise exceptions.PumpWoodActionArgsException(
@@ -1419,15 +1427,16 @@ class PumpWoodFlaskView(View):
             func=action_fun, parameters=parameters)
         result = action_fun(**loaded_parameters)
 
-        available_microservices = self.get_available_microservices()
-        pumpwood_etl_ok = 'pumpwood-etl-app' in available_microservices
-        is_to_broadcast = (self.broadcast and pumpwood_etl_ok)
-        if self.microservice is not None and is_to_broadcast:
-            self.microservice.login()
-            self.microservice.execute_action(
-                "ETLTrigger", action="process_triggers", parameters={
-                    "model_class": self.model_class.__name__.lower(),
-                    "type": "action", "pk": pk, "action_name": action_name})
+        object_id = None
+        if model_object is not None:
+            object_id = model_object.id
+        self._schedule_etl_trigger({
+            "model_class": self.model_class.__name__.lower(),
+            "trigger_type": "action",
+            "object_id": object_id,
+            "action_name": action_name,
+            "parameters": parameters,
+            "process_name": None})
 
         return {
             'result': result, 'action': action_name,
