@@ -523,12 +523,17 @@ class PumpWoodFlaskView(View):
                 request.args.get('default_fields', 'false'))
             upsert = json.loads(
                 request.args.get('upsert', 'false'))
+            use_cache = json.loads(
+                request.args.get('use_cache', 'false'))
+            disable_etl_trigger = json.loads(
+                request.args.get('disable_etl_trigger', 'false'))
             save_data = self.save(
                 data=data, fields=fields,
                 foreign_key_fields=foreign_key_fields,
                 related_fields=related_fields,
                 default_fields=default_fields,
-                upsert=upsert)
+                upsert=upsert,
+                disable_etl_trigger=disable_etl_trigger)
             return jsonify(save_data)
 
         if end_point == "save-file-streaming" and \
@@ -574,8 +579,11 @@ class PumpWoodFlaskView(View):
                         "Delete endpoint with delete method must have a pk")
                 force_delete = json.loads(
                     request.args.get('force_delete', 'false'))
+                disable_etl_trigger = json.loads(
+                    request.args.get('disable_etl_trigger', 'false'))
                 return jsonify(self.delete(
-                    pk=first_arg, force_delete=force_delete))
+                    pk=first_arg, force_delete=force_delete,
+                    disable_etl_trigger=disable_etl_trigger))
 
             if request.method.lower() == 'post':
                 endpoint_dict = data or {}
@@ -591,9 +599,12 @@ class PumpWoodFlaskView(View):
                     return jsonify(
                         self.list_actions_with_objects(objects=data))
                 else:
+                    disable_etl_trigger = json.loads(
+                        request.args.get('disable_etl_trigger', 'false'))
                     action_result = self.execute_action(
                         action_name=first_arg,
-                        pk=second_arg, parameters=data)
+                        pk=second_arg, parameters=data,
+                        disable_etl_trigger=disable_etl_trigger)
                     result = action_result["result"]
                     if type(result) is dict:
                         result_keys = result.keys()
@@ -946,7 +957,8 @@ class PumpWoodFlaskView(View):
         retrieve_serializer = self.serializer(many=False)
         return retrieve_serializer.dump(empty_object)
 
-    def delete(self, pk: int | str, force_delete: bool = False) -> dict:
+    def delete(self, pk: int | str, force_delete: bool = False,
+               disable_etl_trigger: bool = False) -> dict:
         """Delete an object by its primary key.
 
         Supports soft-deletion if the model has a 'deleted' column.
@@ -959,6 +971,8 @@ class PumpWoodFlaskView(View):
             force_delete (bool):
                 If True, bypasses soft-delete logic and removes the
                 record from the database.
+            disable_etl_trigger (bool):
+                If True, disables the ETL trigger.
 
         Returns:
             dict:
@@ -982,14 +996,16 @@ class PumpWoodFlaskView(View):
             except Exception as e:
                 session.rollback()
                 raise e
-
-        self._schedule_etl_trigger({
-            "model_class": self.model_class.__name__.lower(),
-            "trigger_type": "delete",
-            "object_id": model_object.id,
-            "action_name": None,
-            "parameters": None,
-            "process_name": None})
+        if not disable_etl_trigger:
+            self._schedule_etl_trigger({
+                "model_class": self.model_class.__name__.lower(),
+                "trigger_type": "delete",
+                "object_id": model_object.id,
+                "action_name": None,
+                "parameters": None,
+                "process_name": None})
+        else:
+            logger.info("ETL trigger disabled at request")
         return object_dump
 
     def delete_many(self, filter_dict: dict = None,
@@ -1029,7 +1045,7 @@ class PumpWoodFlaskView(View):
     def save(self, data: dict, file_paths: dict = None,
              foreign_key_fields: bool = False, related_fields: bool = False,
              default_fields: bool = False, fields: list = None,
-             upsert: bool = False) -> dict:
+             upsert: bool = False, disable_etl_trigger: bool = False) -> dict:
         """Update an existing object or save a new one.
 
         Handles complex serialization, file uploads, and optional upsert
@@ -1050,6 +1066,8 @@ class PumpWoodFlaskView(View):
                 Limits the returned object to specific fields.
             upsert (bool):
                 If True, creates a new record if the PK is not found.
+            disable_etl_trigger (bool):
+                If True, disables the ETL trigger.
 
         Returns:
             dict:
@@ -1223,22 +1241,25 @@ class PumpWoodFlaskView(View):
 
         ###################################
         # Pumpwood ETLTrigger integration #
-        if not is_new_object:
-            self._schedule_etl_trigger({
-                "model_class": self.model_class.__name__.lower(),
-                "trigger_type": "create",
-                "object_id": to_save_obj.id,
-                "action_name": None,
-                "parameters": None,
-                "process_name": None})
+        if not disable_etl_trigger:
+            if not is_new_object:
+                self._schedule_etl_trigger({
+                    "model_class": self.model_class.__name__.lower(),
+                    "trigger_type": "create",
+                    "object_id": to_save_obj.id,
+                    "action_name": None,
+                    "parameters": None,
+                    "process_name": None})
+            else:
+                self._schedule_etl_trigger({
+                    "model_class": self.model_class.__name__.lower(),
+                    "trigger_type": "update",
+                    "object_id": to_save_obj.id,
+                    "action_name": None,
+                    "parameters": None,
+                    "process_name": None})
         else:
-            self._schedule_etl_trigger({
-                "model_class": self.model_class.__name__.lower(),
-                "trigger_type": "update",
-                "object_id": to_save_obj.id,
-                "action_name": None,
-                "parameters": None,
-                "process_name": None})
+            logger.info("ETL trigger disabled at request")
 
         # Add extra information to the result
         result['__is_new_object__'] = is_new_object
@@ -1362,7 +1383,8 @@ class PumpWoodFlaskView(View):
         return action_descriptions
 
     def execute_action(self, action_name: str, pk: Any = None,
-                       parameters: dict = None) -> dict:
+                       parameters: dict = None,
+                       disable_etl_trigger: bool = False) -> dict:
         """Execute a decorated action on the model or instance.
 
         Actions can be static or instance-based. This method handles
@@ -1375,6 +1397,8 @@ class PumpWoodFlaskView(View):
                 The primary key (required if action is instance-based).
             parameters (dict):
                 A dictionary of parameters passed to the action function.
+            disable_etl_trigger (bool):
+                If True, disables the ETL trigger.
 
         Returns:
             dict:
@@ -1430,13 +1454,16 @@ class PumpWoodFlaskView(View):
         object_id = None
         if model_object is not None:
             object_id = model_object.id
-        self._schedule_etl_trigger({
-            "model_class": self.model_class.__name__.lower(),
-            "trigger_type": "action",
-            "object_id": object_id,
-            "action_name": action_name,
-            "parameters": parameters,
-            "process_name": None})
+        if not disable_etl_trigger:
+            self._schedule_etl_trigger({
+                "model_class": self.model_class.__name__.lower(),
+                "trigger_type": "action",
+                "object_id": object_id,
+                "action_name": action_name,
+                "parameters": parameters,
+                "process_name": None})
+        else:
+            logger.info("ETL trigger disabled at request")
 
         return {
             'result': result, 'action': action_name,
