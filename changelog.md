@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.5.40] - 2026-09-09
+### Changed
+- **PumpWoodFlaskView**: ETL trigger broadcasts on save, delete, and
+  action run in a background thread pool; HTTP responses no longer wait
+  for ``pumpwood-etl-app`` ``process_matching_triggers``.
+- **etl_broadcast**: New helper schedules triggers via
+  ``PumpWoodMicroService.clone()`` and a shared
+  ``ThreadPoolExecutor``; failures are logged, not raised to the
+  client.
+
+### Documentation
+- **README**: Document ``broadcast`` and non-blocking ETL trigger
+  behavior on ``PumpWoodFlaskView``.
+
+
 ## [1.5.39] - 2026-08-27
 ### Added
 - **LowerCaseStringField**, **UpperCaseStringField**,
