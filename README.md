@@ -349,8 +349,11 @@ When ``True`` (default), save, delete, and action endpoints schedule
 ``ETLTrigger.process_matching_triggers`` on ``pumpwood-etl-app`` when
 that service is registered. The call runs in a background worker
 (``PumpWoodMicroService.clone()`` per job) and does not block the HTTP
-response. Set to ``False`` on the view class to disable ETL triggers.
-Failures are logged only; the API response is unchanged.
+response. Set to ``False`` on the view class to disable ETL triggers
+for all requests. Pass ``disable_etl_trigger=true`` as a query
+parameter on an individual save, delete, or action call to skip
+broadcast for that request only. Failures are logged only; the API
+response is unchanged.
 
 ##### serializer [PumpWoodSerializer]:
 Serializer to be used to serialize model objects at endpoints.
