@@ -15,7 +15,7 @@ classifiers = [
 ]
 dependencies = [
     "python-slugify>=6.1.1",
-    "pumpwood-communication>=2.0",
+    "pumpwood-communication>=2.4.52",
     "pandas>=2.2.3",
     "MarkupSafe==3.0.2",
     "SQLAlchemy-Utils==0.37.8",
