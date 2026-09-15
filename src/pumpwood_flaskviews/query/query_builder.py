@@ -58,12 +58,18 @@ def open_composite_pk(query_dict: dict, is_filter: bool) -> dict:
         if "pk" in key:
             if key == "pk":
                 if is_filter:
-                    open_composite = CompositePkBase64Converter.load(
-                        new_query_dict["pk"])
+                    open_composite = CompositePkBase64Converter\
+                        .load(new_query_dict["pk"])
                     new_query_dict.update(open_composite)
                 else:
-                    open_composite = CompositePkBase64Converter.load(
-                        new_query_dict["pk"])
+                    open_composite = CompositePkBase64Converter\
+                        .load(new_query_dict["pk"])
+                    if "id" not in open_composite.keys():
+                        msg = (
+                            "Composite primary key must contain an `id` field "
+                            "on exclude queries. query_dict: {query_dict}")
+                        raise PumpWoodQueryException(
+                            message=msg, payload={"query_dict": query_dict})
                     new_query_dict["id"] = open_composite["id"]
 
                 count_pk_filters = count_pk_filters + 1
@@ -72,16 +78,24 @@ def open_composite_pk(query_dict: dict, is_filter: bool) -> dict:
             elif key == "pk__in":
                 if is_filter:
                     open_composite = pd.DataFrame(
-                            pd.Series(new_query_dict["pk__in"]).apply(
-                                CompositePkBase64Converter.load).tolist())
+                        pd.Series(new_query_dict["pk__in"])
+                        .apply(CompositePkBase64Converter.load)
+                        .tolist())
                     for col in open_composite.columns:
                         new_query_dict[col + "__in"] = [
                             convert_np(x)
                             for x in open_composite[col].unique()]
                 else:
                     open_composite = pd.DataFrame(
-                            pd.Series(new_query_dict["pk__in"]).apply(
-                                CompositePkBase64Converter.load).tolist())
+                        pd.Series(new_query_dict["pk__in"])
+                        .apply(CompositePkBase64Converter.load)
+                        .tolist())
+                    if "id" not in open_composite.columns:
+                        msg = (
+                            "Composite primary key must contain an `id` field "
+                            "on exclude queries. query_dict: {query_dict}")
+                        raise PumpWoodQueryException(
+                            message=msg, payload={"query_dict": query_dict})
                     new_query_dict["id__in"] = [
                         convert_np(x) for x in open_composite["id"].unique()]
 
@@ -93,11 +107,11 @@ def open_composite_pk(query_dict: dict, is_filter: bool) -> dict:
                     "filter_dict" if is_filter else "exclude_dict")
                 msg = (
                     "Using composite pk to filter queries must use just "
-                    "equal and in operators and with join. "
+                    "`equal` and `in` operators. "
                     "{temp_msg_dict}: \n {query_dict}").format(
                         temp_msg_dict=temp_msg_dict,
                         query_dict=query_dict.keys())
-                raise PumpWoodQueryException(
+                raise PumpWoodNotImplementedError(
                     message=msg, payload={
                         "query_dict": query_dict,
                         "is_filter": is_filter})
@@ -106,7 +120,7 @@ def open_composite_pk(query_dict: dict, is_filter: bool) -> dict:
             msg = (
                 "Please give some help for the dev here, use just one "
                 "filter_dict entry for composite primary key...")
-            raise PumpWoodQueryException(
+            raise PumpWoodNotImplementedError(
                 message=msg, payload={
                     "query_dict": query_dict,
                     "is_filter": is_filter})
@@ -347,11 +361,12 @@ class SqlalchemyQueryMisc():
             order_by (list[str]):
                 Dictionary to be used as ordering.
 
+        Returns:
+            sqlalchemy.query:
+                Returns an sqlalchemy query with filters applied.
+
         Raises:
             No raises implemented
-
-        Return:
-            sqlalquemy.query: Returns an sqlalchemy with filters applied.
 
         Example:
         >>> query = SqlalchemyQueryMisc.sqlalchemy_kward_query(
@@ -367,13 +382,12 @@ class SqlalchemyQueryMisc():
         order_by = [] if order_by is None else order_by
 
         mapper = inspect(object_model.__table__)
-        primary_keys = [
-            col.name for col in list(mapper.c) if col.primary_key]
-        if 1 < len(primary_keys):
-            filter_dict = open_composite_pk(
-                query_dict=filter_dict, is_filter=True)
-            exclude_dict = open_composite_pk(
-                query_dict=exclude_dict, is_filter=False)
+
+        # Expand pk filter and exclude to pass them to the query builder
+        filter_dict = open_composite_pk(
+            query_dict=filter_dict, is_filter=True)
+        exclude_dict = open_composite_pk(
+            query_dict=exclude_dict, is_filter=False)
 
         order_by_dict = {}
         for o in order_by:

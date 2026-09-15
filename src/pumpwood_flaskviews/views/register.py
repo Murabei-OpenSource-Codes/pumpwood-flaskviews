@@ -114,4 +114,3 @@ def register_pumpwood_view(app: object, view: object,
         response = jsonify(pump_exc.to_dict())
         response.status_code = pump_exc.status_code
         return response
-    

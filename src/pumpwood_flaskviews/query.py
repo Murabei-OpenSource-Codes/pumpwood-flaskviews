@@ -57,10 +57,17 @@ def open_composite_pk(query_dict: dict, is_filter: bool) -> dict:
         if "pk" in key:
             if key == "pk":
                 if is_filter:
+                    # It is expected that id will always be present in the
+                    # composite primary key. The secondary collumns will
+                    # help to prune sub-partitions on query execution.
                     open_composite = CompositePkBase64Converter.load(
                         new_query_dict["pk"])
                     new_query_dict.update(open_composite)
                 else:
+                    # On exclude queries, using just id is the same of
+                    # including all composite primary fields. Using
+                    # secondary partition on the exclude would remove more
+                    # rows than necessary.
                     open_composite = CompositePkBase64Converter.load(
                         new_query_dict["pk"])
                     new_query_dict["id"] = open_composite["id"]
@@ -70,17 +77,24 @@ def open_composite_pk(query_dict: dict, is_filter: bool) -> dict:
 
             elif key == "pk__in":
                 if is_filter:
+                    # It is expected that id will always be present in the
+                    # composite primary key. The secondary collumns will
+                    # help to prune sub-partitions on query execution.
                     open_composite = pd.DataFrame(
-                            pd.Series(new_query_dict["pk__in"]).apply(
-                                CompositePkBase64Converter.load).tolist())
+                        pd.Series(new_query_dict["pk__in"]).apply(
+                            CompositePkBase64Converter.load).tolist())
                     for col in open_composite.columns:
                         new_query_dict[col + "__in"] = [
                             convert_np(x)
                             for x in open_composite[col].unique()]
                 else:
+                    # On exclude queries, using just id is the same of
+                    # including all composite primary fields. Using
+                    # secondary partition on the exclude would remove more
+                    # rows than necessary.
                     open_composite = pd.DataFrame(
-                            pd.Series(new_query_dict["pk__in"]).apply(
-                                CompositePkBase64Converter.load).tolist())
+                        pd.Series(new_query_dict["pk__in"]).apply(
+                            CompositePkBase64Converter.load).tolist())
                     new_query_dict["id__in"] = [
                         convert_np(x) for x in open_composite["id"].unique()]
 
@@ -373,11 +387,11 @@ class SqlalchemyQueryMisc():
             order_by (list[str]):
                 Dictionary to be used as ordering.
 
+        Returns:
+            sqlalchemy.query: Returns an sqlalchemy query with filters applied.
+
         Raises:
             No raises implemented
-
-        Return:
-            sqlalquemy.query: Returns an sqlalchemy with filters applied.
 
         Example:
         >>> query = SqlalchemyQueryMisc.sqlalchemy_kward_query(
