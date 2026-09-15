@@ -1,4 +1,4 @@
-"""Modules to set aux functions for queries on batabase."""
+"""Modules to set aux functions for queries on database."""
 from .query_builder import (
     open_composite_pk, SqlalchemyQueryMisc)
 from .base_query import (

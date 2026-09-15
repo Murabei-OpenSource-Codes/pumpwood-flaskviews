@@ -2,7 +2,7 @@ from pumpwood_communication.exceptions import PumpWoodException
 
 
 class PumpWoodFlaskViewEndPointFoundError(PumpWoodException):
-    """Raised when a Pumpwood FlaskViews route is not registered."""
+    """Raised for an unknown view endpoint or HTTP method combination."""
 
     status_code = 404
 

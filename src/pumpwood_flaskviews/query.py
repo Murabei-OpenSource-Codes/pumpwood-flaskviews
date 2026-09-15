@@ -13,24 +13,26 @@ from pumpwood_communication.serializers import CompositePkBase64Converter
 
 
 def open_composite_pk(query_dict: dict, is_filter: bool) -> dict:
-    """Open filter/exclude dictionary with pk on composite primary keys.
+    """Expand ``pk`` and ``pk__in`` keys in a filter or exclude dict.
 
-    Open filter dict to filter all components of the composite primary
-    keys. For exclude dict use just the id field from the composite
-    primary.
+    Primary-key values are decoded with ``CompositePkBase64Converter``.
+    Filters merge all columns from the decoded pk; excludes keep only
+    ``id``.
 
     Args:
         query_dict (dict):
-            Query dictionary containing information of the filters, exclude
-            and order by that will be applied.
+            ``filter_dict`` or ``exclude_dict`` before query building.
         is_filter (bool):
-            If the pk will be used on filter or on exclude clauses.
+            If True, apply filter rules; if False, exclude rules.
 
-    Kwargs:
-        No kwargs.
+    Returns:
+        dict:
+            Copy of ``query_dict`` with ``pk`` / ``pk__in`` expanded.
 
-    Return [dict]:
-        Dictionary with adjusted filter and exclude dictionaries.
+    Raises:
+        PumpWoodQueryException:
+            If pk keys use unsupported operators or more than one pk
+            entry is present.
     """
 
     def convert_np(obj):
@@ -57,10 +59,17 @@ def open_composite_pk(query_dict: dict, is_filter: bool) -> dict:
         if "pk" in key:
             if key == "pk":
                 if is_filter:
+                    # It is expected that id will always be present in the
+                    # composite primary key. The secondary collumns will
+                    # help to prune sub-partitions on query execution.
                     open_composite = CompositePkBase64Converter.load(
                         new_query_dict["pk"])
                     new_query_dict.update(open_composite)
                 else:
+                    # On exclude queries, using just id is the same of
+                    # including all composite primary fields. Using
+                    # secondary partition on the exclude would remove more
+                    # rows than necessary.
                     open_composite = CompositePkBase64Converter.load(
                         new_query_dict["pk"])
                     new_query_dict["id"] = open_composite["id"]
@@ -70,17 +79,24 @@ def open_composite_pk(query_dict: dict, is_filter: bool) -> dict:
 
             elif key == "pk__in":
                 if is_filter:
+                    # It is expected that id will always be present in the
+                    # composite primary key. The secondary collumns will
+                    # help to prune sub-partitions on query execution.
                     open_composite = pd.DataFrame(
-                            pd.Series(new_query_dict["pk__in"]).apply(
-                                CompositePkBase64Converter.load).tolist())
+                        pd.Series(new_query_dict["pk__in"]).apply(
+                            CompositePkBase64Converter.load).tolist())
                     for col in open_composite.columns:
                         new_query_dict[col + "__in"] = [
                             convert_np(x)
                             for x in open_composite[col].unique()]
                 else:
+                    # On exclude queries, using just id is the same of
+                    # including all composite primary fields. Using
+                    # secondary partition on the exclude would remove more
+                    # rows than necessary.
                     open_composite = pd.DataFrame(
-                            pd.Series(new_query_dict["pk__in"]).apply(
-                                CompositePkBase64Converter.load).tolist())
+                        pd.Series(new_query_dict["pk__in"]).apply(
+                            CompositePkBase64Converter.load).tolist())
                     new_query_dict["id__in"] = [
                         convert_np(x) for x in open_composite["id"].unique()]
 
@@ -361,7 +377,7 @@ class SqlalchemyQueryMisc():
     def sqlalchemy_kward_query(cls, object_model, filter_dict: dict = {},
                                exclude_dict: dict = {},
                                order_by: list[str] = []):
-        """Build SQLAlchemy engine string according to database parameters.
+        """Build a SQLAlchemy query from filter, exclude, and order args.
 
         Args:
             object_model:
@@ -371,13 +387,15 @@ class SqlalchemyQueryMisc():
             exclude_dict (dict):
                 Dictionary to be used in excluding.
             order_by (list[str]):
-                Dictionary to be used as ordering.
+                Field names; prefix ``-`` for descending order.
+
+        Returns:
+            Query:
+                Query with joins, filters, excludes, and ordering.
 
         Raises:
-            No raises implemented
-
-        Return:
-            sqlalquemy.query: Returns an sqlalchemy with filters applied.
+            PumpWoodQueryException:
+                If query tokens or order values are invalid.
 
         Example:
         >>> query = SqlalchemyQueryMisc.sqlalchemy_kward_query(
