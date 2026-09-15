@@ -13,24 +13,26 @@ from pumpwood_communication.serializers import CompositePkBase64Converter
 
 
 def open_composite_pk(query_dict: dict, is_filter: bool) -> dict:
-    """Open filter/exclude dictionary with pk on composite primary keys.
+    """Expand ``pk`` and ``pk__in`` keys in a filter or exclude dict.
 
-    Open filter dict to filter all components of the composite primary
-    keys. For exclude dict use just the id field from the composite
-    primary.
+    Primary-key values are decoded with ``CompositePkBase64Converter``.
+    Filters merge all columns from the decoded pk; excludes keep only
+    ``id``.
 
     Args:
         query_dict (dict):
-            Query dictionary containing information of the filters, exclude
-            and order by that will be applied.
+            ``filter_dict`` or ``exclude_dict`` before query building.
         is_filter (bool):
-            If the pk will be used on filter or on exclude clauses.
+            If True, apply filter rules; if False, exclude rules.
 
-    Kwargs:
-        No kwargs.
+    Returns:
+        dict:
+            Copy of ``query_dict`` with ``pk`` / ``pk__in`` expanded.
 
-    Return [dict]:
-        Dictionary with adjusted filter and exclude dictionaries.
+    Raises:
+        PumpWoodQueryException:
+            If pk keys use unsupported operators or more than one pk
+            entry is present.
     """
 
     def convert_np(obj):
@@ -375,7 +377,7 @@ class SqlalchemyQueryMisc():
     def sqlalchemy_kward_query(cls, object_model, filter_dict: dict = {},
                                exclude_dict: dict = {},
                                order_by: list[str] = []):
-        """Build SQLAlchemy engine string according to database parameters.
+        """Build a SQLAlchemy query from filter, exclude, and order args.
 
         Args:
             object_model:
@@ -385,13 +387,15 @@ class SqlalchemyQueryMisc():
             exclude_dict (dict):
                 Dictionary to be used in excluding.
             order_by (list[str]):
-                Dictionary to be used as ordering.
+                Field names; prefix ``-`` for descending order.
 
         Returns:
-            sqlalchemy.query: Returns an sqlalchemy query with filters applied.
+            Query:
+                Query with joins, filters, excludes, and ordering.
 
         Raises:
-            No raises implemented
+            PumpWoodQueryException:
+                If query tokens or order values are invalid.
 
         Example:
         >>> query = SqlalchemyQueryMisc.sqlalchemy_kward_query(

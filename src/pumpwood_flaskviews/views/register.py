@@ -14,7 +14,7 @@ from pumpwood_flaskviews.exceptions import PumpWoodFlaskViewEndPointFoundError
 
 
 def register_pumpwood_view(app: object, view: object,
-                           service_object: dict = None) -> None:
+                           service_object: dict | None = None) -> None:
     """Register a PumpWood view and its associated error handlers.
 
     Registers CRUD and action routes for the multi-argument URL patterns
@@ -27,9 +27,13 @@ def register_pumpwood_view(app: object, view: object,
             The Flask application instance.
         view (type):
             The PumpWood view class or instance to register.
-        service_object (dict):
+        service_object (dict | None):
             Optional metadata describing the service for automatic
             registration in PumpWood Auth.
+
+    Returns:
+        None:
+            Routes and error handlers are registered on ``app`` in place.
     """
     model_class_name = view.model_class.__name__
     suffix = os.getenv('ENDPOINT_SUFFIX', '')
