@@ -172,7 +172,7 @@ class SqlalchemyQueryMisc():
                 func.unaccent(func.lower(c)),
                 func.unaccent(x.lower())),
 
-        'isnull': lambda c, x: x and c is not None or c is None,
+        'isnull': lambda c, x: c.is_(None) if x else c.isnot(None),
         'range': lambda c, x: operators.between_op(c, x),
         'year': lambda c, x: func.extract('year', c) == x,
         'month': lambda c, x: func.extract('month', c) == x,

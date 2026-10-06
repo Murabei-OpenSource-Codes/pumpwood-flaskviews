@@ -18,7 +18,16 @@ class BaseQueryABC(ABC):
     @property
     @abstractmethod
     def skip_arg(self) -> str:
-        """Return the URL/query argument name that skips this filter."""
+        """Token that disables this filter when listed in ``base_filter_skip``.
+
+        Clients include this name (or ``ALL``) in the request
+        ``base_filter_skip`` JSON list. Subclasses set a unique string;
+        ``None`` means the filter cannot be skipped.
+
+        Returns:
+            str:
+                Skip token for this base-query implementation.
+        """
         pass
 
     def add_filter(self, model: DeclarativeBase, query: Query | None = None,

@@ -7,7 +7,6 @@ src/pumpwood_flaskviews/__init__.py
 src/pumpwood_flaskviews/config.py
 src/pumpwood_flaskviews/exceptions.py
 src/pumpwood_flaskviews/json.py
-src/pumpwood_flaskviews/query.py
 src/pumpwood_flaskviews.egg-info/PKG-INFO
 src/pumpwood_flaskviews.egg-info/SOURCES.txt
 src/pumpwood_flaskviews.egg-info/dependency_links.txt
